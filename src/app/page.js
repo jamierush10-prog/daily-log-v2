@@ -1,13 +1,13 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
-import { collection, addDoc, query, orderBy, onSnapshot, limit, where, getDocs } from 'firebase/firestore';
+import { collection, addDoc, query, orderBy, onSnapshot, limit, where, getDocs, deleteDoc, updateDoc, doc } from 'firebase/firestore';
 
 export default function Home() {
   const [type, setType] = useState('Do');
   
-  // Checkboxes state
-  const [isWork, setIsWork] = useState(true);
+  // 1. Checkboxes now default to FALSE (Empty)
+  const [isWork, setIsWork] = useState(false);
   const [isHome, setIsHome] = useState(false);
 
   const [entry, setEntry] = useState('');
@@ -16,11 +16,14 @@ export default function Home() {
   const [status, setStatus] = useState('');
   const [logs, setLogs] = useState([]);
 
-  // 1. Set Default Date/Time (Robust Local Time Fix)
+  // NEW: State for Editing
+  const [editingId, setEditingId] = useState(null); // Which log is being edited?
+  const [editText, setEditText] = useState('');     // What is the new text?
+
+  // Set Default Date/Time
   useEffect(() => {
     const initDateTime = () => {
       const now = new Date();
-      // Manual formatting to ensure local time (not UTC)
       const year = now.getFullYear();
       const month = String(now.getMonth() + 1).padStart(2, '0');
       const day = String(now.getDate()).padStart(2, '0');
@@ -36,7 +39,7 @@ export default function Home() {
     initDateTime();
   }, []);
 
-  // 2. Live Feed Subscription
+  // Live Feed Subscription
   useEffect(() => {
     const q = query(collection(db, "logs"), orderBy("timestamp", "desc"), limit(20));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -49,11 +52,10 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
-  // 3. Submit Handler
+  // Submit Handler
   const handleSubmit = async () => {
     if (!entry) return; 
     
-    // Build list of selected categories
     const activeCategories = [];
     if (isWork) activeCategories.push('Work');
     if (isHome) activeCategories.push('Home');
@@ -67,7 +69,7 @@ export default function Home() {
     try {
       await addDoc(collection(db, "logs"), {
         type: type,
-        categories: activeCategories, // Saves as ['Work'] or ['Work', 'Home']
+        categories: activeCategories,
         entry: entry,
         timestamp: `${date}T${time}`,
         dateString: date,
@@ -82,7 +84,41 @@ export default function Home() {
     }
   };
 
-  // 4. AI Report Generator (Smart Logic)
+  // --- NEW: DELETE FUNCTION ---
+  const handleDelete = async (id) => {
+    if (confirm("Are you sure you want to delete this log?")) {
+      try {
+        await deleteDoc(doc(db, "logs", id));
+      } catch (e) {
+        alert("Error deleting: " + e.message);
+      }
+    }
+  };
+
+  // --- NEW: EDIT FUNCTIONS ---
+  const startEditing = (log) => {
+    setEditingId(log.id);
+    setEditText(log.entry);
+  };
+
+  const cancelEditing = () => {
+    setEditingId(null);
+    setEditText('');
+  };
+
+  const saveEdit = async (id) => {
+    try {
+      const logRef = doc(db, "logs", id);
+      await updateDoc(logRef, {
+        entry: editText
+      });
+      setEditingId(null); // Exit edit mode
+    } catch (e) {
+      alert("Error updating: " + e.message);
+    }
+  };
+
+  // Report Generator
   const generateReport = async () => {
     setStatus('Generating...');
     
@@ -95,10 +131,6 @@ export default function Home() {
       setStatus('');
       return;
     }
-
-    // Logic: If a log has "Work" in its list, it goes to Work Brief.
-    // If it has "Home", it goes to Home Brief.
-    // If it has BOTH, it goes to BOTH.
     
     const workLogs = dayLogs.filter(l => 
       (l.categories && l.categories.includes('Work')) || l.category === 'Work' || l.category === 'Both'
@@ -149,7 +181,6 @@ REQUIREMENTS:
     }
   };
 
-  // Helper to show category tags
   const displayCats = (log) => {
     if (log.categories) return log.categories.join(' & ');
     return log.category || 'Work';
@@ -161,9 +192,7 @@ REQUIREMENTS:
         
         <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">Log Entry</h2>
 
-        {/* --- CHECKBOXES (No "Both" Button) --- */}
         <div className="flex justify-center gap-8 mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-          
           <label className="flex items-center gap-3 cursor-pointer select-none">
             <input 
               type="checkbox" 
@@ -183,10 +212,8 @@ REQUIREMENTS:
             />
             <span className="font-bold text-gray-700 text-lg">Home</span>
           </label>
-
         </div>
 
-        {/* Inputs */}
         <div className="mb-4">
           <label className="block text-sm font-bold text-gray-700 mb-1">Type</label>
           <select value={type} onChange={(e) => setType(e.target.value)} className="w-full p-3 border border-gray-300 rounded text-black bg-gray-50">
@@ -223,12 +250,14 @@ REQUIREMENTS:
         <p className="text-center text-xs text-gray-500 mt-2">{status}</p>
       </div>
 
-      {/* History List */}
+      {/* History List with Edit/Delete */}
       <div className="w-full max-w-md">
         <h3 className="text-xl font-bold text-gray-700 mb-4">Live Feed</h3>
         <div className="space-y-3">
           {logs.map((log) => (
             <div key={log.id} className="bg-white p-4 rounded shadow border-l-4 border-blue-500">
+              
+              {/* Header Row */}
               <div className="flex justify-between items-center mb-2">
                 <div className="flex gap-2">
                   <span className="text-xs font-bold px-2 py-1 rounded border bg-gray-50 text-gray-600 border-gray-200">
@@ -236,9 +265,43 @@ REQUIREMENTS:
                   </span>
                   <span className={`text-xs font-bold px-2 py-1 rounded ${getBadgeColor(log.type)}`}>{log.type}</span>
                 </div>
-                <span className="text-xs text-gray-500">{log.timestamp.replace('T', ' ')}</span>
+                
+                {/* Time + Action Buttons */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500 mr-1">{log.timestamp.replace('T', ' ')}</span>
+                  
+                  {/* Edit/Delete Buttons (Only show if NOT editing this specific row) */}
+                  {editingId !== log.id && (
+                    <>
+                      <button onClick={() => startEditing(log)} className="text-blue-600 text-xs font-bold hover:underline">
+                        Edit
+                      </button>
+                      <button onClick={() => handleDelete(log.id)} className="text-red-600 text-xs font-bold hover:underline">
+                        X
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
-              <p className="text-gray-800">{log.entry}</p>
+
+              {/* Content Logic: Show Text OR Show Input Box */}
+              {editingId === log.id ? (
+                <div className="mt-2">
+                  <textarea 
+                    value={editText} 
+                    onChange={(e) => setEditText(e.target.value)}
+                    className="w-full p-2 border border-blue-300 rounded text-black text-sm mb-2"
+                    rows="3"
+                  ></textarea>
+                  <div className="flex gap-2 justify-end">
+                    <button onClick={cancelEditing} className="text-xs text-gray-500 font-bold px-2 py-1">Cancel</button>
+                    <button onClick={() => saveEdit(log.id)} className="text-xs bg-blue-600 text-white font-bold px-3 py-1 rounded">Save</button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-gray-800 whitespace-pre-wrap">{log.entry}</p>
+              )}
+
             </div>
           ))}
         </div>
