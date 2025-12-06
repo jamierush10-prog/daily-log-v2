@@ -1,10 +1,10 @@
-// Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
-import { initializeFirestore } from "firebase/firestore"; // CHANGED THIS LINE
+import { getFirestore, initializeFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage"; // NEW
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSy...", // KEEP YOUR REAL KEY HERE
+  apiKey: "AIzaSyA0hgDU75i7nENIWFodBeqvzvmZEOAVJqE",
   authDomain: "daily-log-james.firebaseapp.com",
   projectId: "daily-log-james",
   storageBucket: "daily-log-james.firebasestorage.app",
@@ -12,11 +12,12 @@ const firebaseConfig = {
   appId: "1:933698778128:web:767ec2d6f21564fc84c695"
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firestore with FORCE LONG POLLING
-// This is the magic setting that fixes the "Saving..." freeze
+// Initialize Firestore
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
 });
+
+// Initialize Storage
+export const storage = getStorage(app); // NEW
