@@ -4,9 +4,8 @@ import { db } from '../lib/firebase';
 import { collection, addDoc, query, orderBy, onSnapshot, limit, where, getDocs, deleteDoc, updateDoc, doc } from 'firebase/firestore';
 
 export default function Home() {
-  const [type, setType] = useState('Do');
-  
   // Main Form State
+  const [type, setType] = useState('Do');
   const [isWork, setIsWork] = useState(false);
   const [isHome, setIsHome] = useState(false);
   const [entry, setEntry] = useState('');
@@ -15,11 +14,12 @@ export default function Home() {
   const [status, setStatus] = useState('');
   const [logs, setLogs] = useState([]);
 
-  // --- NEW: FULL EDITING STATE ---
+  // --- EDITING STATE ---
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState('');
   const [editDate, setEditDate] = useState('');
   const [editTime, setEditTime] = useState('');
+  const [editType, setEditType] = useState('Do'); // NEW: Track Type during edit
   const [editIsWork, setEditIsWork] = useState(false);
   const [editIsHome, setEditIsHome] = useState(false);
 
@@ -102,13 +102,14 @@ export default function Home() {
   const startEditing = (log) => {
     setEditingId(log.id);
     setEditText(log.entry);
+    setEditType(log.type); // Load current type
     
-    // Split timestamp back into Date and Time
+    // Split timestamp
     const parts = log.timestamp.split('T');
     setEditDate(parts[0]);
     setEditTime(parts[1]);
 
-    // Set checkboxes based on saved data
+    // Set checkboxes
     const cats = log.categories || [];
     setEditIsWork(cats.includes('Work') || log.category === 'Work');
     setEditIsHome(cats.includes('Home') || log.category === 'Home');
@@ -133,11 +134,12 @@ export default function Home() {
       const logRef = doc(db, "logs", id);
       await updateDoc(logRef, {
         entry: editText,
+        type: editType, // Save the new type
         categories: activeCategories,
         dateString: editDate,
         timestamp: `${editDate}T${editTime}`
       });
-      setEditingId(null); // Exit edit mode
+      setEditingId(null);
     } catch (e) {
       alert("Error updating: " + e.message);
     }
@@ -298,6 +300,17 @@ REQUIREMENTS:
                       <span className="text-sm">Home</span>
                     </label>
                   </div>
+
+                  {/* Edit Type (NEW) */}
+                  <select 
+                    value={editType} 
+                    onChange={(e) => setEditType(e.target.value)}
+                    className="w-full p-2 border border-blue-300 rounded text-black text-sm"
+                  >
+                    <option value="Do">Do</option>
+                    <option value="Done">Done</option>
+                    <option value="Note">Note</option>
+                  </select>
 
                   {/* Edit Date/Time */}
                   <div className="flex gap-2">
