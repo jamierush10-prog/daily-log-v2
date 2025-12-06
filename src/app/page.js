@@ -8,11 +8,14 @@ export default function Home() {
   // Main Form State
   const [type, setType] = useState('Do');
   
-  // Checkboxes default to FALSE (Empty)
+  // Checkboxes default to FALSE
   const [isWork, setIsWork] = useState(false);
   const [isHome, setIsHome] = useState(false);
 
+  // New Subject State
+  const [subject, setSubject] = useState('');
   const [entry, setEntry] = useState('');
+  
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [status, setStatus] = useState('');
@@ -20,6 +23,7 @@ export default function Home() {
 
   // --- EDITING STATE ---
   const [editingId, setEditingId] = useState(null);
+  const [editSubject, setEditSubject] = useState(''); // New for Edit
   const [editText, setEditText] = useState('');
   const [editDate, setEditDate] = useState('');
   const [editTime, setEditTime] = useState('');
@@ -77,6 +81,7 @@ export default function Home() {
       await addDoc(collection(db, "logs"), {
         type: type,
         categories: activeCategories,
+        subject: subject, // Save the Subject
         entry: entry,
         timestamp: `${date}T${time}`,
         dateString: date,
@@ -84,6 +89,7 @@ export default function Home() {
       });
       setStatus('Saved!');
       setEntry(''); 
+      setSubject(''); // Clear subject
       setTimeout(() => setStatus(''), 2000);
     } catch (e) {
       console.error("Error: ", e);
@@ -105,15 +111,16 @@ export default function Home() {
   // 5. --- EXPANDED EDIT FUNCTIONS ---
   const startEditing = (log) => {
     setEditingId(log.id);
+    setEditSubject(log.subject || ''); // Load Subject
     setEditText(log.entry);
-    setEditType(log.type); // Load current type
+    setEditType(log.type); 
     
     // Split timestamp
     const parts = log.timestamp.split('T');
     setEditDate(parts[0]);
     setEditTime(parts[1]);
 
-    // Set checkboxes based on saved data
+    // Set checkboxes
     const cats = log.categories || [];
     setEditIsWork(cats.includes('Work') || log.category === 'Work');
     setEditIsHome(cats.includes('Home') || log.category === 'Home');
@@ -122,6 +129,7 @@ export default function Home() {
   const cancelEditing = () => {
     setEditingId(null);
     setEditText('');
+    setEditSubject('');
   };
 
   const saveEdit = async (id) => {
@@ -137,6 +145,7 @@ export default function Home() {
     try {
       const logRef = doc(db, "logs", id);
       await updateDoc(logRef, {
+        subject: editSubject, // Update Subject
         entry: editText,
         type: editType,
         categories: activeCategories,
@@ -171,7 +180,11 @@ export default function Home() {
       (l.categories && l.categories.includes('Home')) || l.category === 'Home' || l.category === 'Both'
     );
 
-    const formatLogs = (list) => list.map(l => `[${l.timestamp.split('T')[1]}] [${l.type}] ${l.entry}`).join('\n');
+    // Update AI format to include Subject
+    const formatLogs = (list) => list.map(l => {
+      const sub = l.subject ? ` - ${l.subject.toUpperCase()}` : '';
+      return `[${l.timestamp.split('T')[1]}] [${l.type}]${sub}: ${l.entry}`;
+    }).join('\n');
 
     const prompt = `Act as my Executive Officer. Here are my logs for ${date}.
 Please generate TWO SEPARATE REPORTS based on the data below.
@@ -268,9 +281,21 @@ REQUIREMENTS:
           </div>
         </div>
 
+        {/* --- NEW SUBJECT FIELD --- */}
+        <div className="mb-2">
+          <label className="block text-sm font-bold text-gray-700 mb-1">Subject</label>
+          <input 
+            type="text" 
+            value={subject} 
+            onChange={(e) => setSubject(e.target.value)} 
+            className="w-full p-3 border border-gray-300 rounded text-black font-bold placeholder-gray-400" 
+            placeholder="Subject Line..."
+          />
+        </div>
+
         <div className="mb-6">
           <label className="block text-sm font-bold text-gray-700 mb-1">Entry</label>
-          <textarea value={entry} onChange={(e) => setEntry(e.target.value)} className="w-full p-3 border border-gray-300 rounded h-32 text-black bg-gray-50" placeholder="Log activity..."></textarea>
+          <textarea value={entry} onChange={(e) => setEntry(e.target.value)} className="w-full p-3 border border-gray-300 rounded h-32 text-black bg-gray-50" placeholder="Log details..."></textarea>
         </div>
 
         <div className="flex gap-2">
@@ -283,7 +308,7 @@ REQUIREMENTS:
         </div>
         <p className="text-center text-xs text-gray-500 mt-2">{status}</p>
 
-        {/* --- LINK TO ARCHIVE PAGE --- */}
+        {/* Link to Archive */}
         <div className="mt-6 pt-6 border-t border-gray-100">
           <Link href="/history">
             <button className="w-full bg-gray-800 text-white py-3 px-4 rounded font-bold hover:bg-black transition">
@@ -306,7 +331,6 @@ REQUIREMENTS:
                 <div className="flex flex-col gap-3">
                   <p className="text-sm font-bold text-blue-600 mb-1">Editing Entry...</p>
                   
-                  {/* Edit Categories */}
                   <div className="flex gap-4">
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input type="checkbox" checked={editIsWork} onChange={(e) => setEditIsWork(e.target.checked)} className="accent-blue-600"/>
@@ -318,18 +342,25 @@ REQUIREMENTS:
                     </label>
                   </div>
 
-                  {/* Edit Type */}
                   <select value={editType} onChange={(e) => setEditType(e.target.value)} className="w-full p-2 border border-blue-300 rounded text-black text-sm">
                     <option value="Do">Do</option>
                     <option value="Done">Done</option>
                     <option value="Note">Note</option>
                   </select>
 
-                  {/* Edit Date/Time */}
                   <div className="flex gap-2">
                     <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="flex-1 p-2 border rounded text-black text-sm"/>
                     <input type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} className="flex-1 p-2 border rounded text-black text-sm"/>
                   </div>
+
+                  {/* Edit Subject */}
+                  <input 
+                    type="text" 
+                    value={editSubject} 
+                    onChange={(e) => setEditSubject(e.target.value)} 
+                    className="w-full p-2 border border-blue-300 rounded text-black text-sm font-bold"
+                    placeholder="Subject..."
+                  />
 
                   {/* Edit Text */}
                   <textarea 
@@ -339,7 +370,6 @@ REQUIREMENTS:
                     rows="3"
                   ></textarea>
 
-                  {/* Save/Cancel Buttons */}
                   <div className="flex gap-2 justify-end">
                     <button onClick={cancelEditing} className="text-xs text-gray-500 font-bold px-2 py-1 bg-gray-100 rounded">Cancel</button>
                     <button onClick={() => saveEdit(log.id)} className="text-xs bg-blue-600 text-white font-bold px-3 py-1 rounded">Save Changes</button>
@@ -362,6 +392,8 @@ REQUIREMENTS:
                       <button onClick={() => handleDelete(log.id)} className="text-red-600 text-xs font-bold hover:underline">X</button>
                     </div>
                   </div>
+                  {/* Display Subject if present */}
+                  {log.subject && <h4 className="font-bold text-gray-900 mb-1">{log.subject}</h4>}
                   <p className="text-gray-800 whitespace-pre-wrap">{log.entry}</p>
                 </>
               )}
