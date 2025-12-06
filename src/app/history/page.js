@@ -23,14 +23,13 @@ export default function HistoryPage() {
   const [editText, setEditText] = useState('');
   const [editDate, setEditDate] = useState('');
   const [editTime, setEditTime] = useState('');
-  const [editType, setEditType] = useState('Do');
+  const [editType, setEditType] = useState('Open'); // Default Open
   const [editIsWork, setEditIsWork] = useState(false);
   const [editIsHome, setEditIsHome] = useState(false);
 
-  // --- NEW: IMAGE MODAL STATE ---
+  // Expanded Image
   const [expandedImage, setExpandedImage] = useState(null);
 
-  // 1. Fetch Logs
   useEffect(() => {
     const q = query(collection(db, "logs"), orderBy("timestamp", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -43,7 +42,6 @@ export default function HistoryPage() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Filter Logic
   const filteredLogs = logs.filter(log => {
     const term = activeSearch.toLowerCase();
     const entryMatch = log.entry.toLowerCase().includes(term);
@@ -65,7 +63,6 @@ export default function HistoryPage() {
     return matchesSearch && matchesCategory && matchesDate;
   });
 
-  // Handlers
   const handleSearchClick = () => setActiveSearch(searchText);
   const handleFilterClick = () => { setActiveCategory(uiCategory); setActiveDate(uiDate); };
 
@@ -79,7 +76,7 @@ export default function HistoryPage() {
     setEditingId(log.id);
     setEditSubject(log.subject || '');
     setEditText(log.entry);
-    setEditType(log.type);
+    setEditType(log.type || 'Open'); // Fallback to Open
     const parts = log.timestamp.split('T');
     setEditDate(parts[0]);
     setEditTime(parts[1]);
@@ -116,11 +113,13 @@ export default function HistoryPage() {
     setEditingId(null);
   };
 
+  // UPDATED BADGE COLORS (Open = Blue)
   const getBadgeColor = (type) => {
     switch(type) {
-      case 'Do': return 'bg-blue-100 text-blue-800';
-      case 'Done': return 'bg-green-100 text-green-800';
-      case 'Note': return 'bg-yellow-100 text-yellow-800';
+      case 'Do':      return 'bg-blue-100 text-blue-800'; // Keep for old entries
+      case 'Open':    return 'bg-blue-100 text-blue-800'; // New Standard
+      case 'Done':    return 'bg-green-100 text-green-800';
+      case 'Note':    return 'bg-yellow-100 text-yellow-800';
       default: return 'bg-gray-100';
     }
   };
@@ -146,14 +145,7 @@ export default function HistoryPage() {
           <div className="mb-6 border-b pb-6 border-gray-100">
             <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Search Text</label>
             <div className="flex gap-2">
-              <input 
-                type="text" 
-                placeholder="Type keywords..." 
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearchClick()} 
-                className="flex-1 p-3 border border-gray-300 rounded text-black"
-              />
+              <input type="text" placeholder="Type keywords..." value={searchText} onChange={(e) => setSearchText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearchClick()} className="flex-1 p-3 border border-gray-300 rounded text-black"/>
               <button onClick={handleSearchClick} className="bg-blue-600 text-white px-6 py-2 rounded font-bold hover:bg-blue-700">Search</button>
             </div>
           </div>
@@ -175,7 +167,7 @@ export default function HistoryPage() {
           <button onClick={handleFilterClick} className="w-full bg-gray-800 text-white py-2 rounded font-bold hover:bg-black transition">Apply Filters</button>
         </div>
 
-        {/* Results List */}
+        {/* Results */}
         <div className="space-y-3">
           {filteredLogs.map((log) => (
             <div key={log.id} className="bg-white p-4 rounded shadow border-l-4 border-gray-400">
@@ -188,8 +180,11 @@ export default function HistoryPage() {
                     <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={editIsHome} onChange={(e) => setEditIsHome(e.target.checked)} className="accent-green-600"/><span className="text-sm text-black">Home</span></label>
                   </div>
                   <div className="flex gap-2">
+                    {/* CHANGED DO TO OPEN */}
                     <select value={editType} onChange={(e) => setEditType(e.target.value)} className="p-1 border rounded text-black text-sm">
-                        <option value="Do">Do</option><option value="Done">Done</option><option value="Note">Note</option>
+                        <option value="Open">Open</option>
+                        <option value="Done">Done</option>
+                        <option value="Note">Note</option>
                     </select>
                     <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="p-1 border rounded text-black text-sm"/>
                     <input type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} className="p-1 border rounded text-black text-sm"/>
@@ -217,46 +212,28 @@ export default function HistoryPage() {
                   </div>
                   
                   {log.subject && <h4 className="font-bold text-gray-900 mb-1">{log.subject}</h4>}
-                  
                   <p className="text-gray-800 whitespace-pre-wrap">{log.entry}</p>
 
-                  {/* --- THUMBNAIL LOGIC --- */}
+                  {/* Thumbnail */}
                   {log.imageUrl && (
                     <div className="mt-3">
                       <p className="text-xs text-gray-400 mb-1">Attachment:</p>
-                      <img 
-                        src={log.imageUrl} 
-                        alt="Log attachment" 
-                        onClick={() => setExpandedImage(log.imageUrl)} // Click to expand
-                        className="w-20 h-20 object-cover rounded-lg border border-gray-300 cursor-pointer hover:opacity-80 transition" 
-                      />
+                      <img src={log.imageUrl} alt="Log attachment" onClick={() => setExpandedImage(log.imageUrl)} className="w-20 h-20 object-cover rounded-lg border border-gray-300 cursor-pointer hover:opacity-80 transition" />
                     </div>
                   )}
                 </>
               )}
             </div>
           ))}
-          
           {filteredLogs.length === 0 && <p className="text-center text-gray-500 mt-8">No entries found.</p>}
         </div>
 
-        {/* --- FULL SCREEN IMAGE MODAL --- */}
+        {/* Lightbox */}
         {expandedImage && (
-          <div 
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-90 p-4"
-            onClick={() => setExpandedImage(null)} // Click background to close
-          >
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-90 p-4" onClick={() => setExpandedImage(null)}>
             <div className="relative max-w-full max-h-full">
-              <img 
-                src={expandedImage} 
-                alt="Full screen" 
-                className="max-w-full max-h-[90vh] rounded shadow-2xl"
-              />
-              <button 
-                className="absolute -top-10 right-0 text-white text-xl font-bold bg-gray-800 px-3 py-1 rounded-full opacity-80"
-              >
-                Close X
-              </button>
+              <img src={expandedImage} alt="Full screen" className="max-w-full max-h-[90vh] rounded shadow-2xl"/>
+              <button className="absolute -top-10 right-0 text-white text-xl font-bold bg-gray-800 px-3 py-1 rounded-full opacity-80">Close X</button>
             </div>
           </div>
         )}

@@ -1,12 +1,13 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { db, storage } from '../lib/firebase'; // Added storage
+import { db, storage } from '../lib/firebase';
 import { collection, addDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'; // Storage tools
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import Link from 'next/link';
 
 export default function Home() {
-  const [type, setType] = useState('Do');
+  // --- FORM STATE ---
+  const [type, setType] = useState('Open'); // CHANGED DEFAULT TO 'Open'
   const [isWork, setIsWork] = useState(false);
   const [isHome, setIsHome] = useState(false);
   const [subject, setSubject] = useState('');
@@ -15,23 +16,29 @@ export default function Home() {
   const [time, setTime] = useState('');
   const [status, setStatus] = useState('');
   
-  // NEW: Image State
+  // Image State
   const [imageFile, setImageFile] = useState(null);
 
+  // 1. Set Default Date/Time (Local Time)
   useEffect(() => {
     const initDateTime = () => {
       const now = new Date();
       const year = now.getFullYear();
       const month = String(now.getMonth() + 1).padStart(2, '0');
       const day = String(now.getDate()).padStart(2, '0');
-      setDate(`${year}-${month}-${day}`);
+      const localDate = `${year}-${month}-${day}`;
+      
       const hours = String(now.getHours()).padStart(2, '0');
       const minutes = String(now.getMinutes()).padStart(2, '0');
-      setTime(`${hours}:${minutes}`);
+      const localTime = `${hours}:${minutes}`;
+
+      setDate(localDate);
+      setTime(localTime);
     };
     initDateTime();
   }, []);
 
+  // 2. Submit Handler
   const handleSubmit = async () => {
     if (!entry) return; 
     
@@ -49,7 +56,7 @@ export default function Home() {
     try {
       let imageUrl = null;
 
-      // 1. Upload Image if exists
+      // Upload Image if exists
       if (imageFile) {
         setStatus('Uploading Image...');
         const uniqueName = `${Date.now()}-${imageFile.name}`;
@@ -58,14 +65,14 @@ export default function Home() {
         imageUrl = await getDownloadURL(storageRef);
       }
 
-      // 2. Save Log with Image URL
+      // Save Log
       setStatus('Saving Log...');
       await addDoc(collection(db, "logs"), {
         type: type,
         categories: activeCategories,
         subject: subject,
         entry: entry,
-        imageUrl: imageUrl, // Save the link
+        imageUrl: imageUrl,
         timestamp: `${date}T${time}`,
         dateString: date,
         createdAt: new Date()
@@ -74,7 +81,7 @@ export default function Home() {
       setStatus('Saved!');
       setEntry(''); 
       setSubject('');
-      setImageFile(null); // Clear image
+      setImageFile(null);
       setTimeout(() => setStatus(''), 2000);
     } catch (e) {
       console.error("Error: ", e);
@@ -88,6 +95,7 @@ export default function Home() {
         
         <h2 className="text-3xl font-bold mb-6 text-center text-gray-800">Log Entry</h2>
 
+        {/* Checkboxes */}
         <div className="flex justify-center gap-8 mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
           <label className="flex items-center gap-3 cursor-pointer select-none">
             <input type="checkbox" checked={isWork} onChange={(e) => setIsWork(e.target.checked)} className="w-6 h-6 accent-blue-600 rounded"/>
@@ -99,15 +107,17 @@ export default function Home() {
           </label>
         </div>
 
+        {/* Type Selector (Updated "Do" to "Open") */}
         <div className="mb-4">
           <label className="block text-sm font-bold text-gray-700 mb-1">Type</label>
           <select value={type} onChange={(e) => setType(e.target.value)} className="w-full p-3 border border-gray-300 rounded text-black bg-gray-50">
-            <option value="Do">Do</option>
+            <option value="Open">Open</option> {/* CHANGED HERE */}
             <option value="Done">Done</option>
             <option value="Note">Note</option>
           </select>
         </div>
 
+        {/* Date & Time */}
         <div className="flex gap-4 mb-4">
           <div className="flex-1">
             <label className="block text-sm font-bold text-gray-700 mb-1">Date</label>
@@ -119,36 +129,35 @@ export default function Home() {
           </div>
         </div>
 
+        {/* Subject */}
         <div className="mb-2">
           <label className="block text-sm font-bold text-gray-700 mb-1">Subject</label>
           <input type="text" value={subject} onChange={(e) => setSubject(e.target.value)} className="w-full p-3 border border-gray-300 rounded text-black font-bold placeholder-gray-400" placeholder="Subject Line..."/>
         </div>
 
-        <div className="mb-4">
+        {/* Entry */}
+        <div className="mb-6">
           <label className="block text-sm font-bold text-gray-700 mb-1">Entry</label>
           <textarea value={entry} onChange={(e) => setEntry(e.target.value)} className="w-full p-3 border border-gray-300 rounded h-32 text-black bg-gray-50" placeholder="Log details..."></textarea>
         </div>
 
-        {/* --- NEW IMAGE UPLOAD BUTTON --- */}
+        {/* Image Upload */}
         <div className="mb-6">
           <label className="block text-sm font-bold text-gray-700 mb-1">Attach Photo (Optional)</label>
           <input 
             type="file" 
             accept="image/*"
             onChange={(e) => setImageFile(e.target.files[0])}
-            className="w-full text-sm text-gray-500
-              file:mr-4 file:py-2 file:px-4
-              file:rounded-full file:border-0
-              file:text-sm file:font-semibold
-              file:bg-blue-50 file:text-blue-700
-              hover:file:bg-blue-100"
+            className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
           />
         </div>
 
+        {/* Submit */}
         <button onClick={handleSubmit} className={`w-full py-4 rounded font-bold text-xl text-white transition-all shadow-md ${status === 'Saved!' ? 'bg-green-600' : 'bg-blue-600 hover:bg-blue-700'}`}>
           {status ? status : "Submit Log"}
         </button>
 
+        {/* Archive Link */}
         <div className="mt-8 pt-6 border-t border-gray-200">
           <Link href="/history">
             <button className="w-full bg-gray-800 text-white py-3 px-4 rounded font-bold hover:bg-black transition">
