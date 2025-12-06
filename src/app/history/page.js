@@ -7,17 +7,19 @@ import Link from 'next/link';
 export default function HistoryPage() {
   const [logs, setLogs] = useState([]);
   
-  // Filters
+  // --- UI STATE (What you are typing/selecting) ---
   const [searchText, setSearchText] = useState(''); 
+  const [uiCategory, setUiCategory] = useState('All'); 
+  const [uiStartDate, setUiStartDate] = useState('');
+
+  // --- ACTIVE FILTERS (What actually filters the list) ---
   const [activeSearch, setActiveSearch] = useState(''); 
-  
-  const [categoryFilter, setCategoryFilter] = useState('All');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [activeCategory, setActiveCategory] = useState('All');
+  const [activeStartDate, setActiveStartDate] = useState('');
 
   // Editing State
   const [editingId, setEditingId] = useState(null);
-  const [editSubject, setEditSubject] = useState(''); // NEW: Subject State
+  const [editSubject, setEditSubject] = useState('');
   const [editText, setEditText] = useState('');
   const [editDate, setEditDate] = useState('');
   const [editTime, setEditTime] = useState('');
@@ -38,9 +40,9 @@ export default function HistoryPage() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Filter Logic 
+  // 2. Filter Logic (Uses ACTIVE variables only)
   const filteredLogs = logs.filter(log => {
-    // A. Text Search (Checks ENTRY and SUBJECT)
+    // A. Text Search
     const term = activeSearch.toLowerCase();
     const entryMatch = log.entry.toLowerCase().includes(term);
     const subjectMatch = log.subject ? log.subject.toLowerCase().includes(term) : false;
@@ -48,23 +50,27 @@ export default function HistoryPage() {
     
     // B. Category Filter
     let matchesCategory = true;
-    if (categoryFilter === 'Work') {
+    if (activeCategory === 'Work') {
       matchesCategory = (log.categories && log.categories.includes('Work')) || log.category === 'Work' || log.category === 'Both';
-    } else if (categoryFilter === 'Home') {
+    } else if (activeCategory === 'Home') {
       matchesCategory = (log.categories && log.categories.includes('Home')) || log.category === 'Home' || log.category === 'Both';
     }
 
-    // C. Date Range
+    // C. Date Filter (From Date)
     let matchesDate = true;
-    if (startDate) matchesDate = matchesDate && (log.dateString >= startDate);
-    if (endDate) matchesDate = matchesDate && (log.dateString <= endDate);
+    if (activeStartDate) matchesDate = matchesDate && (log.dateString >= activeStartDate);
 
     return matchesSearch && matchesCategory && matchesDate;
   });
 
-  // Helper to trigger search
+  // --- BUTTON HANDLERS ---
   const handleSearchClick = () => {
     setActiveSearch(searchText);
+  };
+
+  const handleFilterClick = () => {
+    setActiveCategory(uiCategory);
+    setActiveStartDate(uiStartDate);
   };
 
   // --- ACTIONS (Delete/Edit) ---
@@ -76,7 +82,7 @@ export default function HistoryPage() {
 
   const startEditing = (log) => {
     setEditingId(log.id);
-    setEditSubject(log.subject || ''); // Load Subject
+    setEditSubject(log.subject || '');
     setEditText(log.entry);
     setEditType(log.type);
     
@@ -107,7 +113,7 @@ export default function HistoryPage() {
 
     const logRef = doc(db, "logs", id);
     await updateDoc(logRef, {
-      subject: editSubject, // Save Subject
+      subject: editSubject,
       entry: editText,
       type: editType,
       categories: activeCategories,
@@ -146,9 +152,9 @@ export default function HistoryPage() {
         {/* --- FILTERS CARD --- */}
         <div className="bg-white p-6 rounded-lg shadow mb-6">
           
-          {/* Search Bar with Button */}
-          <div className="mb-4">
-            <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Search</label>
+          {/* 1. Text Search Row */}
+          <div className="mb-6 border-b pb-6 border-gray-100">
+            <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Search Text</label>
             <div className="flex gap-2">
               <input 
                 type="text" 
@@ -167,13 +173,13 @@ export default function HistoryPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            {/* Category Filter */}
+          {/* 2. Category & Date Row */}
+          <div className="grid grid-cols-2 gap-4 mb-4">
             <div>
-              <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Filter Category</label>
+              <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Category</label>
               <select 
-                value={categoryFilter} 
-                onChange={(e) => setCategoryFilter(e.target.value)}
+                value={uiCategory} 
+                onChange={(e) => setUiCategory(e.target.value)}
                 className="w-full p-2 border border-gray-300 rounded text-black"
               >
                 <option value="All">Show All</option>
@@ -182,17 +188,25 @@ export default function HistoryPage() {
               </select>
             </div>
 
-            {/* Date Range - Start */}
             <div>
               <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">From Date</label>
               <input 
                 type="date" 
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                value={uiStartDate}
+                onChange={(e) => setUiStartDate(e.target.value)}
                 className="w-full p-2 border border-gray-300 rounded text-black"
               />
             </div>
           </div>
+
+          {/* Filter Button */}
+          <button 
+            onClick={handleFilterClick}
+            className="w-full bg-gray-800 text-white py-2 rounded font-bold hover:bg-black transition"
+          >
+            Apply Filters
+          </button>
+
         </div>
 
         {/* --- RESULTS LIST --- */}
@@ -216,7 +230,6 @@ export default function HistoryPage() {
                     <input type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} className="p-1 border rounded text-black text-sm"/>
                   </div>
                   
-                  {/* Subject Edit */}
                   <input 
                     type="text" 
                     value={editSubject} 
@@ -225,7 +238,6 @@ export default function HistoryPage() {
                     placeholder="Subject..."
                   />
 
-                  {/* Entry Edit */}
                   <textarea value={editText} onChange={(e) => setEditText(e.target.value)} className="w-full p-2 border border-blue-300 rounded text-black text-sm" rows="3"></textarea>
                   
                   <div className="flex gap-2 justify-end">
@@ -248,9 +260,7 @@ export default function HistoryPage() {
                     </div>
                   </div>
                   
-                  {/* Display Subject */}
                   {log.subject && <h4 className="font-bold text-gray-900 mb-1">{log.subject}</h4>}
-                  
                   <p className="text-gray-800 whitespace-pre-wrap">{log.entry}</p>
                 </>
               )}
