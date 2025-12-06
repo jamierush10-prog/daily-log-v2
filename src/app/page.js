@@ -19,7 +19,7 @@ export default function Home() {
     setTime(timeString);
   }, []);
 
-  // 2. Live Feed Subscription
+  // 2. Live Feed Subscription (Listens for changes)
   useEffect(() => {
     const q = query(collection(db, "logs"), orderBy("timestamp", "desc"), limit(20));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -53,7 +53,7 @@ export default function Home() {
     }
   };
 
-  // 4. --- NEW: AI REPORT GENERATOR ---
+  // 4. AI Report Generator
   const generateReport = async () => {
     setStatus('Generating...');
     
@@ -87,6 +87,7 @@ ${logText}`;
     setTimeout(() => setStatus(''), 2000);
   };
 
+  // Helper for colors
   const getBadgeColor = (type) => {
     switch(type) {
       case 'Do': return 'bg-blue-100 text-blue-800';
@@ -99,7 +100,9 @@ ${logText}`;
   return (
     <div className="min-h-screen bg-gray-100 p-4 flex flex-col items-center">
       <div className="bg-white p-8 rounded-lg shadow-lg w-full max-w-md mb-8">
-        <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">Daily Log</h2>
+        
+        {/* --- TITLE CHANGE HERE --- */}
+        <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">Log Entry</h2>
 
         {/* Inputs */}
         <div className="mb-4">
