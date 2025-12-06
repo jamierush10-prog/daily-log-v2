@@ -7,12 +7,12 @@ import Link from 'next/link';
 export default function HistoryPage() {
   const [logs, setLogs] = useState([]);
   
-  // --- UI STATE ---
+  // Filters
   const [searchText, setSearchText] = useState(''); 
   const [uiCategory, setUiCategory] = useState('All'); 
-  const [uiDate, setUiDate] = useState(''); // Renamed for clarity
+  const [uiDate, setUiDate] = useState('');
 
-  // --- ACTIVE FILTERS ---
+  // Active Filters
   const [activeSearch, setActiveSearch] = useState(''); 
   const [activeCategory, setActiveCategory] = useState('All');
   const [activeDate, setActiveDate] = useState('');
@@ -27,7 +27,10 @@ export default function HistoryPage() {
   const [editIsWork, setEditIsWork] = useState(false);
   const [editIsHome, setEditIsHome] = useState(false);
 
-  // 1. Fetch ALL logs
+  // --- NEW: IMAGE MODAL STATE ---
+  const [expandedImage, setExpandedImage] = useState(null);
+
+  // 1. Fetch Logs
   useEffect(() => {
     const q = query(collection(db, "logs"), orderBy("timestamp", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -40,15 +43,13 @@ export default function HistoryPage() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Filter Logic (EXACT DATE MATCH)
+  // 2. Filter Logic
   const filteredLogs = logs.filter(log => {
-    // A. Text Search
     const term = activeSearch.toLowerCase();
     const entryMatch = log.entry.toLowerCase().includes(term);
     const subjectMatch = log.subject ? log.subject.toLowerCase().includes(term) : false;
     const matchesSearch = entryMatch || subjectMatch;
     
-    // B. Category Filter
     let matchesCategory = true;
     if (activeCategory === 'Work') {
       matchesCategory = (log.categories && log.categories.includes('Work')) || log.category === 'Work' || log.category === 'Both';
@@ -56,7 +57,6 @@ export default function HistoryPage() {
       matchesCategory = (log.categories && log.categories.includes('Home')) || log.category === 'Home' || log.category === 'Both';
     }
 
-    // C. Date Filter (EXACT MATCH)
     let matchesDate = true;
     if (activeDate) {
       matchesDate = (log.dateString === activeDate);
@@ -65,17 +65,10 @@ export default function HistoryPage() {
     return matchesSearch && matchesCategory && matchesDate;
   });
 
-  // --- BUTTON HANDLERS ---
-  const handleSearchClick = () => {
-    setActiveSearch(searchText);
-  };
+  // Handlers
+  const handleSearchClick = () => setActiveSearch(searchText);
+  const handleFilterClick = () => { setActiveCategory(uiCategory); setActiveDate(uiDate); };
 
-  const handleFilterClick = () => {
-    setActiveCategory(uiCategory);
-    setActiveDate(uiDate);
-  };
-
-  // --- ACTIONS (Delete/Edit) ---
   const handleDelete = async (id) => {
     if (confirm("Permanently delete this log?")) {
       await deleteDoc(doc(db, "logs", id));
@@ -87,11 +80,9 @@ export default function HistoryPage() {
     setEditSubject(log.subject || '');
     setEditText(log.entry);
     setEditType(log.type);
-    
     const parts = log.timestamp.split('T');
     setEditDate(parts[0]);
     setEditTime(parts[1]);
-    
     const cats = log.categories || [];
     setEditIsWork(cats.includes('Work') || log.category === 'Work');
     setEditIsHome(cats.includes('Home') || log.category === 'Home');
@@ -143,7 +134,6 @@ export default function HistoryPage() {
     <div className="min-h-screen bg-gray-100 p-4 flex flex-col items-center">
       <div className="w-full max-w-2xl">
         
-        {/* Header with Back Button */}
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-3xl font-bold text-gray-800">Archive</h1>
           <Link href="/" className="bg-gray-600 text-white px-4 py-2 rounded font-bold hover:bg-gray-700">
@@ -151,10 +141,8 @@ export default function HistoryPage() {
           </Link>
         </div>
 
-        {/* --- FILTERS CARD --- */}
+        {/* Filters */}
         <div className="bg-white p-6 rounded-lg shadow mb-6">
-          
-          {/* 1. Text Search Row */}
           <div className="mb-6 border-b pb-6 border-gray-100">
             <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Search Text</label>
             <div className="flex gap-2">
@@ -166,64 +154,39 @@ export default function HistoryPage() {
                 onKeyDown={(e) => e.key === 'Enter' && handleSearchClick()} 
                 className="flex-1 p-3 border border-gray-300 rounded text-black"
               />
-              <button 
-                onClick={handleSearchClick}
-                className="bg-blue-600 text-white px-6 py-2 rounded font-bold hover:bg-blue-700"
-              >
-                Search
-              </button>
+              <button onClick={handleSearchClick} className="bg-blue-600 text-white px-6 py-2 rounded font-bold hover:bg-blue-700">Search</button>
             </div>
           </div>
 
-          {/* 2. Category & Date Row */}
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div>
               <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Category</label>
-              <select 
-                value={uiCategory} 
-                onChange={(e) => setUiCategory(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded text-black"
-              >
+              <select value={uiCategory} onChange={(e) => setUiCategory(e.target.value)} className="w-full p-2 border border-gray-300 rounded text-black">
                 <option value="All">Show All</option>
                 <option value="Work">Work Only</option>
                 <option value="Home">Home Only</option>
               </select>
             </div>
-
             <div>
               <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Date</label>
-              <input 
-                type="date" 
-                value={uiDate}
-                onChange={(e) => setUiDate(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded text-black"
-              />
+              <input type="date" value={uiDate} onChange={(e) => setUiDate(e.target.value)} className="w-full p-2 border border-gray-300 rounded text-black"/>
             </div>
           </div>
-
-          {/* Filter Button */}
-          <button 
-            onClick={handleFilterClick}
-            className="w-full bg-gray-800 text-white py-2 rounded font-bold hover:bg-black transition"
-          >
-            Apply Filters
-          </button>
-
+          <button onClick={handleFilterClick} className="w-full bg-gray-800 text-white py-2 rounded font-bold hover:bg-black transition">Apply Filters</button>
         </div>
 
-        {/* --- RESULTS LIST --- */}
+        {/* Results List */}
         <div className="space-y-3">
           {filteredLogs.map((log) => (
             <div key={log.id} className="bg-white p-4 rounded shadow border-l-4 border-gray-400">
               
               {editingId === log.id ? (
-                // EDIT MODE
+                // --- EDIT MODE ---
                 <div className="flex flex-col gap-3 bg-blue-50 p-2 rounded">
                    <div className="flex gap-4">
                     <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={editIsWork} onChange={(e) => setEditIsWork(e.target.checked)} className="accent-blue-600"/><span className="text-sm text-black">Work</span></label>
                     <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={editIsHome} onChange={(e) => setEditIsHome(e.target.checked)} className="accent-green-600"/><span className="text-sm text-black">Home</span></label>
                   </div>
-                  
                   <div className="flex gap-2">
                     <select value={editType} onChange={(e) => setEditType(e.target.value)} className="p-1 border rounded text-black text-sm">
                         <option value="Do">Do</option><option value="Done">Done</option><option value="Note">Note</option>
@@ -231,24 +194,15 @@ export default function HistoryPage() {
                     <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="p-1 border rounded text-black text-sm"/>
                     <input type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} className="p-1 border rounded text-black text-sm"/>
                   </div>
-                  
-                  <input 
-                    type="text" 
-                    value={editSubject} 
-                    onChange={(e) => setEditSubject(e.target.value)} 
-                    className="w-full p-2 border border-blue-300 rounded text-black text-sm font-bold"
-                    placeholder="Subject..."
-                  />
-
+                  <input type="text" value={editSubject} onChange={(e) => setEditSubject(e.target.value)} className="w-full p-2 border border-blue-300 rounded text-black text-sm font-bold" placeholder="Subject..."/>
                   <textarea value={editText} onChange={(e) => setEditText(e.target.value)} className="w-full p-2 border border-blue-300 rounded text-black text-sm" rows="3"></textarea>
-                  
                   <div className="flex gap-2 justify-end">
                     <button onClick={cancelEditing} className="text-xs bg-gray-300 text-black px-2 py-1 rounded">Cancel</button>
                     <button onClick={() => saveEdit(log.id)} className="text-xs bg-blue-600 text-white px-3 py-1 rounded">Save</button>
                   </div>
                 </div>
               ) : (
-                // VIEW MODE
+                // --- VIEW MODE ---
                 <>
                   <div className="flex justify-between items-center mb-2">
                     <div className="flex gap-2">
@@ -263,16 +217,49 @@ export default function HistoryPage() {
                   </div>
                   
                   {log.subject && <h4 className="font-bold text-gray-900 mb-1">{log.subject}</h4>}
+                  
                   <p className="text-gray-800 whitespace-pre-wrap">{log.entry}</p>
+
+                  {/* --- THUMBNAIL LOGIC --- */}
+                  {log.imageUrl && (
+                    <div className="mt-3">
+                      <p className="text-xs text-gray-400 mb-1">Attachment:</p>
+                      <img 
+                        src={log.imageUrl} 
+                        alt="Log attachment" 
+                        onClick={() => setExpandedImage(log.imageUrl)} // Click to expand
+                        className="w-20 h-20 object-cover rounded-lg border border-gray-300 cursor-pointer hover:opacity-80 transition" 
+                      />
+                    </div>
+                  )}
                 </>
               )}
             </div>
           ))}
           
-          {filteredLogs.length === 0 && (
-            <p className="text-center text-gray-500 mt-8">No entries found matching your filters.</p>
-          )}
+          {filteredLogs.length === 0 && <p className="text-center text-gray-500 mt-8">No entries found.</p>}
         </div>
+
+        {/* --- FULL SCREEN IMAGE MODAL --- */}
+        {expandedImage && (
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-90 p-4"
+            onClick={() => setExpandedImage(null)} // Click background to close
+          >
+            <div className="relative max-w-full max-h-full">
+              <img 
+                src={expandedImage} 
+                alt="Full screen" 
+                className="max-w-full max-h-[90vh] rounded shadow-2xl"
+              />
+              <button 
+                className="absolute -top-10 right-0 text-white text-xl font-bold bg-gray-800 px-3 py-1 rounded-full opacity-80"
+              >
+                Close X
+              </button>
+            </div>
+          </div>
+        )}
 
       </div>
     </div>
