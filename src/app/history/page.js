@@ -7,15 +7,17 @@ import Link from 'next/link';
 export default function HistoryPage() {
   const [logs, setLogs] = useState([]);
   
-  // Filters
+  // --- UI STATE ---
   const [searchText, setSearchText] = useState(''); 
   const [uiCategory, setUiCategory] = useState('All'); 
   const [uiDate, setUiDate] = useState('');
+  const [uiShowContext, setUiShowContext] = useState(false); // NEW: Context Toggle
 
-  // Active Filters
+  // --- ACTIVE FILTERS ---
   const [activeSearch, setActiveSearch] = useState(''); 
   const [activeCategory, setActiveCategory] = useState('All');
   const [activeDate, setActiveDate] = useState('');
+  const [activeShowContext, setActiveShowContext] = useState(false); // Active state for logic
 
   // Editing State
   const [editingId, setEditingId] = useState(null);
@@ -26,7 +28,7 @@ export default function HistoryPage() {
   const [editType, setEditType] = useState('Open');
   const [editIsWork, setEditIsWork] = useState(false);
   const [editIsHome, setEditIsHome] = useState(false);
-  const [editTaskRef, setEditTaskRef] = useState(''); // New: Edit the Reference
+  const [editTaskRef, setEditTaskRef] = useState('');
 
   const [expandedImage, setExpandedImage] = useState(null);
 
@@ -42,29 +44,64 @@ export default function HistoryPage() {
     return () => unsubscribe();
   }, []);
 
-  const filteredLogs = logs.filter(log => {
-    const term = activeSearch.toLowerCase();
-    const entryMatch = log.entry.toLowerCase().includes(term);
-    const subjectMatch = log.subject ? log.subject.toLowerCase().includes(term) : false;
-    const matchesSearch = entryMatch || subjectMatch;
-    
-    let matchesCategory = true;
-    if (activeCategory === 'Work') {
-      matchesCategory = (log.categories && log.categories.includes('Work')) || log.category === 'Work' || log.category === 'Both';
-    } else if (activeCategory === 'Home') {
-      matchesCategory = (log.categories && log.categories.includes('Home')) || log.category === 'Home' || log.category === 'Both';
-    }
+  // --- SMART FILTER LOGIC ---
+  const filteredLogs = (() => {
+    // 1. First, basic filtering (Search Text & Category)
+    // We do this first because these apply to EVERYTHING
+    const baseFiltered = logs.filter(log => {
+      const term = activeSearch.toLowerCase();
+      const entryMatch = log.entry.toLowerCase().includes(term);
+      const subjectMatch = log.subject ? log.subject.toLowerCase().includes(term) : false;
+      const matchesSearch = entryMatch || subjectMatch;
+      
+      let matchesCategory = true;
+      if (activeCategory === 'Work') {
+        matchesCategory = (log.categories && log.categories.includes('Work')) || log.category === 'Work' || log.category === 'Both';
+      } else if (activeCategory === 'Home') {
+        matchesCategory = (log.categories && log.categories.includes('Home')) || log.category === 'Home' || log.category === 'Both';
+      }
+      return matchesSearch && matchesCategory;
+    });
 
-    let matchesDate = true;
-    if (activeDate) {
-      matchesDate = (log.dateString === activeDate);
-    }
+    // 2. Identify "Open" IDs (We need this for the context logic)
+    // We need to know which tickets are currently Open to find their children
+    const openTicketIds = new Set(
+      baseFiltered.filter(l => l.type === 'Open' && l.customId).map(l => l.customId.toString())
+    );
 
-    return matchesSearch && matchesCategory && matchesDate;
-  });
+    // 3. Final Filter (Date + Context)
+    return baseFiltered.filter(log => {
+      // Rule A: Matches the Date exactly
+      const isDateMatch = activeDate ? (log.dateString === activeDate) : true;
+
+      // Rule B: Context Mode Logic
+      if (activeShowContext) {
+        // Include if Date Matches OR...
+        if (isDateMatch) return true;
+
+        // ...It is an OPEN ticket
+        if (log.type === 'Open') return true;
+
+        // ...It is a DONE task linked to an Open Ticket
+        if (log.type === 'Done' && log.taskRef && openTicketIds.has(log.taskRef.toString())) {
+          return true;
+        }
+        
+        return false;
+      }
+
+      // Default: Strict Date Match only
+      return isDateMatch;
+    });
+  })();
 
   const handleSearchClick = () => setActiveSearch(searchText);
-  const handleFilterClick = () => { setActiveCategory(uiCategory); setActiveDate(uiDate); };
+  
+  const handleFilterClick = () => { 
+    setActiveCategory(uiCategory); 
+    setActiveDate(uiDate); 
+    setActiveShowContext(uiShowContext); // Apply the toggle
+  };
 
   const handleDelete = async (id) => {
     if (confirm("Permanently delete this log?")) {
@@ -74,9 +111,7 @@ export default function HistoryPage() {
 
   const markAsClosed = async (id) => {
     const logRef = doc(db, "logs", id);
-    await updateDoc(logRef, {
-      type: 'Closed'
-    });
+    await updateDoc(logRef, { type: 'Closed' });
   };
 
   const startEditing = (log) => {
@@ -84,7 +119,7 @@ export default function HistoryPage() {
     setEditSubject(log.subject || '');
     setEditText(log.entry);
     setEditType(log.type || 'Open');
-    setEditTaskRef(log.taskRef || ''); // Load existing ref
+    setEditTaskRef(log.taskRef || '');
     const parts = log.timestamp.split('T');
     setEditDate(parts[0]);
     setEditTime(parts[1]);
@@ -110,7 +145,7 @@ export default function HistoryPage() {
       subject: editSubject,
       entry: editText,
       type: editType,
-      taskRef: (editType === 'Done' && editTaskRef) ? editTaskRef : null, // Save or Clear Ref
+      taskRef: (editType === 'Done' && editTaskRef) ? editTaskRef : null,
       categories: activeCategories,
       dateString: editDate,
       timestamp: `${editDate}T${editTime}`
@@ -163,11 +198,29 @@ export default function HistoryPage() {
                 <option value="Home">Home Only</option>
               </select>
             </div>
+            
+            {/* DATE + TOGGLE ROW */}
             <div>
               <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Date</label>
-              <input type="date" value={uiDate} onChange={(e) => setUiDate(e.target.value)} className="w-full p-2 border border-gray-300 rounded text-black"/>
+              <div className="flex items-center gap-2">
+                <input type="date" value={uiDate} onChange={(e) => setUiDate(e.target.value)} className="w-full p-2 border border-gray-300 rounded text-black"/>
+                
+                {/* --- NEW TOGGLE --- */}
+                <label className="flex items-center cursor-pointer" title="Include Open Tickets & Related History">
+                  <input 
+                    type="checkbox" 
+                    checked={uiShowContext} 
+                    onChange={(e) => setUiShowContext(e.target.checked)} 
+                    className="w-5 h-5 accent-blue-600 cursor-pointer"
+                  />
+                  <span className="ml-2 text-xs font-bold text-blue-700 whitespace-nowrap">
+                    Show Open
+                  </span>
+                </label>
+              </div>
             </div>
           </div>
+          
           <button onClick={handleFilterClick} className="w-full bg-gray-800 text-white py-2 rounded font-bold hover:bg-black transition">Apply Filters</button>
         </div>
 
@@ -194,7 +247,6 @@ export default function HistoryPage() {
                     <input type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} className="p-1 border rounded text-black text-sm"/>
                   </div>
                   
-                  {/* Edit Task Reference */}
                   {editType === 'Done' && (
                      <input type="number" value={editTaskRef} onChange={(e) => setEditTaskRef(e.target.value)} className="w-full p-2 border border-blue-300 rounded text-black text-sm font-mono" placeholder="Related Task # (e.g. 42)"/>
                   )}
@@ -212,10 +264,9 @@ export default function HistoryPage() {
                   <div className="flex justify-between items-center mb-2">
                     <div className="flex gap-2 items-center">
                       
-                      {/* Ticket Number or Reference */}
                       <span className="text-xs text-gray-400 font-mono mr-1">
                         {log.customId ? `#${log.customId}` : ''} 
-                        {log.taskRef ? `(Ref: #${log.taskRef})` : ''} {/* NEW: Show Reference */}
+                        {log.taskRef ? `(Ref: #${log.taskRef})` : ''} 
                         {' '}{log.dateString} {log.timestamp.split('T')[1]}
                       </span>
 
