@@ -16,10 +16,12 @@ export default function Home() {
   const [time, setTime] = useState('');
   const [status, setStatus] = useState('');
   
+  // NEW: Task Reference State
+  const [taskNumber, setTaskNumber] = useState('');
+  
   // Image State
   const [imageFile, setImageFile] = useState(null);
 
-  // 1. Set Default Date/Time (Local Time)
   useEffect(() => {
     const initDateTime = () => {
       const now = new Date();
@@ -38,7 +40,6 @@ export default function Home() {
     initDateTime();
   }, []);
 
-  // 2. Submit Handler
   const handleSubmit = async () => {
     if (!entry) return; 
     
@@ -56,7 +57,6 @@ export default function Home() {
     try {
       let imageUrl = null;
 
-      // Upload Image if exists
       if (imageFile) {
         setStatus('Uploading Image...');
         const uniqueName = `${Date.now()}-${imageFile.name}`;
@@ -65,12 +65,11 @@ export default function Home() {
         imageUrl = await getDownloadURL(storageRef);
       }
 
-      // --- AUTO-INCREMENT LOGIC (Only for "Open" type) ---
+      // Auto-Increment for OPEN tickets
       let newCustomId = null;
       if (type === 'Open') {
         const q = query(collection(db, "logs"), orderBy("customId", "desc"), limit(1));
         const snapshot = await getDocs(q);
-        
         if (!snapshot.empty) {
           const lastId = snapshot.docs[0].data().customId || 0;
           newCustomId = lastId + 1;
@@ -87,7 +86,8 @@ export default function Home() {
         subject: subject,
         entry: entry,
         imageUrl: imageUrl,
-        customId: newCustomId, // Will be null for "Done" or "Note"
+        customId: newCustomId, 
+        taskRef: (type === 'Done' && taskNumber) ? taskNumber : null, // Save Reference only if Done
         timestamp: `${date}T${time}`,
         dateString: date,
         createdAt: new Date()
@@ -96,6 +96,7 @@ export default function Home() {
       setStatus('Saved!');
       setEntry(''); 
       setSubject('');
+      setTaskNumber(''); // Clear task number
       setImageFile(null);
       setTimeout(() => setStatus(''), 2000);
     } catch (e) {
@@ -122,7 +123,7 @@ export default function Home() {
           </label>
         </div>
 
-        {/* Type Selector (Added "Done" back) */}
+        {/* Type Selector */}
         <div className="mb-4">
           <label className="block text-sm font-bold text-gray-700 mb-1">Type</label>
           <select value={type} onChange={(e) => setType(e.target.value)} className="w-full p-3 border border-gray-300 rounded text-black bg-gray-50">
@@ -132,6 +133,20 @@ export default function Home() {
             <option value="Closed">Closed</option>
           </select>
         </div>
+
+        {/* --- CONDITIONAL TASK # FIELD --- */}
+        {type === 'Done' && (
+          <div className="mb-4 animate-fade-in">
+            <label className="block text-sm font-bold text-gray-700 mb-1">Related Task # (Optional)</label>
+            <input 
+              type="number" 
+              value={taskNumber} 
+              onChange={(e) => setTaskNumber(e.target.value)} 
+              className="w-full p-3 border border-blue-300 rounded text-black bg-blue-50 font-mono" 
+              placeholder="e.g. 42"
+            />
+          </div>
+        )}
 
         {/* Date & Time */}
         <div className="flex gap-4 mb-4">

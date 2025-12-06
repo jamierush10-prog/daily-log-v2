@@ -26,8 +26,8 @@ export default function HistoryPage() {
   const [editType, setEditType] = useState('Open');
   const [editIsWork, setEditIsWork] = useState(false);
   const [editIsHome, setEditIsHome] = useState(false);
+  const [editTaskRef, setEditTaskRef] = useState(''); // New: Edit the Reference
 
-  // Expanded Image
   const [expandedImage, setExpandedImage] = useState(null);
 
   useEffect(() => {
@@ -84,6 +84,7 @@ export default function HistoryPage() {
     setEditSubject(log.subject || '');
     setEditText(log.entry);
     setEditType(log.type || 'Open');
+    setEditTaskRef(log.taskRef || ''); // Load existing ref
     const parts = log.timestamp.split('T');
     setEditDate(parts[0]);
     setEditTime(parts[1]);
@@ -96,6 +97,7 @@ export default function HistoryPage() {
     setEditingId(null);
     setEditSubject('');
     setEditText('');
+    setEditTaskRef('');
   };
 
   const saveEdit = async (id) => {
@@ -103,16 +105,12 @@ export default function HistoryPage() {
     if (editIsWork) activeCategories.push('Work');
     if (editIsHome) activeCategories.push('Home');
 
-    if (activeCategories.length === 0) {
-      alert("Please check at least one category.");
-      return;
-    }
-
     const logRef = doc(db, "logs", id);
     await updateDoc(logRef, {
       subject: editSubject,
       entry: editText,
       type: editType,
+      taskRef: (editType === 'Done' && editTaskRef) ? editTaskRef : null, // Save or Clear Ref
       categories: activeCategories,
       dateString: editDate,
       timestamp: `${editDate}T${editTime}`
@@ -123,8 +121,8 @@ export default function HistoryPage() {
   const getBadgeColor = (type) => {
     switch(type) {
       case 'Open':    return 'bg-blue-100 text-blue-800 border border-blue-200';
-      case 'Done':    return 'bg-green-100 text-green-800 border border-green-200'; // Task Done
-      case 'Closed':  return 'bg-gray-200 text-gray-800 border border-gray-300'; // Ticket Closed
+      case 'Done':    return 'bg-green-100 text-green-800 border border-green-200'; 
+      case 'Closed':  return 'bg-gray-200 text-gray-800 border border-gray-300';
       case 'Note':    return 'bg-yellow-100 text-yellow-800 border border-yellow-200';
       default: return 'bg-gray-100';
     }
@@ -195,6 +193,12 @@ export default function HistoryPage() {
                     <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="p-1 border rounded text-black text-sm"/>
                     <input type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} className="p-1 border rounded text-black text-sm"/>
                   </div>
+                  
+                  {/* Edit Task Reference */}
+                  {editType === 'Done' && (
+                     <input type="number" value={editTaskRef} onChange={(e) => setEditTaskRef(e.target.value)} className="w-full p-2 border border-blue-300 rounded text-black text-sm font-mono" placeholder="Related Task # (e.g. 42)"/>
+                  )}
+
                   <input type="text" value={editSubject} onChange={(e) => setEditSubject(e.target.value)} className="w-full p-2 border border-blue-300 rounded text-black text-sm font-bold" placeholder="Subject..."/>
                   <textarea value={editText} onChange={(e) => setEditText(e.target.value)} className="w-full p-2 border border-blue-300 rounded text-black text-sm" rows="3"></textarea>
                   <div className="flex gap-2 justify-end">
@@ -208,9 +212,11 @@ export default function HistoryPage() {
                   <div className="flex justify-between items-center mb-2">
                     <div className="flex gap-2 items-center">
                       
-                      {/* Ticket Number (if Open) */}
+                      {/* Ticket Number or Reference */}
                       <span className="text-xs text-gray-400 font-mono mr-1">
-                        {log.customId ? `#${log.customId}` : ''} {log.dateString} {log.timestamp.split('T')[1]}
+                        {log.customId ? `#${log.customId}` : ''} 
+                        {log.taskRef ? `(Ref: #${log.taskRef})` : ''} {/* NEW: Show Reference */}
+                        {' '}{log.dateString} {log.timestamp.split('T')[1]}
                       </span>
 
                       <span className="text-xs font-bold px-2 py-1 rounded border bg-gray-50 text-gray-600 border-gray-200">
@@ -220,13 +226,8 @@ export default function HistoryPage() {
                       <div className="flex items-center">
                         <span className={`text-xs font-bold px-2 py-1 rounded ${getBadgeColor(log.type)} flex items-center gap-1`}>
                           {log.type}
-                          {/* Close Circle only for OPEN items */}
                           {log.type === 'Open' && (
-                            <button 
-                              onClick={() => markAsClosed(log.id)}
-                              className="w-3 h-3 rounded-full border border-blue-600 hover:bg-blue-600 ml-1 transition"
-                              title="Mark as Closed"
-                            ></button>
+                            <button onClick={() => markAsClosed(log.id)} className="w-3 h-3 rounded-full border border-blue-600 hover:bg-blue-600 ml-1 transition" title="Mark as Closed"></button>
                           )}
                         </span>
                       </div>
@@ -254,7 +255,6 @@ export default function HistoryPage() {
           {filteredLogs.length === 0 && <p className="text-center text-gray-500 mt-8">No entries found.</p>}
         </div>
 
-        {/* Lightbox */}
         {expandedImage && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-90 p-4" onClick={() => setExpandedImage(null)}>
             <div className="relative max-w-full max-h-full">
