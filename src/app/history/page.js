@@ -8,8 +8,8 @@ export default function HistoryPage() {
   const [logs, setLogs] = useState([]);
   
   // Filters
-  const [searchText, setSearchText] = useState(''); // What you type
-  const [activeSearch, setActiveSearch] = useState(''); // What filters the list (after clicking button)
+  const [searchText, setSearchText] = useState(''); 
+  const [activeSearch, setActiveSearch] = useState(''); 
   
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [startDate, setStartDate] = useState('');
@@ -17,6 +17,7 @@ export default function HistoryPage() {
 
   // Editing State
   const [editingId, setEditingId] = useState(null);
+  const [editSubject, setEditSubject] = useState(''); // NEW: Subject State
   const [editText, setEditText] = useState('');
   const [editDate, setEditDate] = useState('');
   const [editTime, setEditTime] = useState('');
@@ -37,10 +38,13 @@ export default function HistoryPage() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Filter Logic (Uses activeSearch, not searchText)
+  // 2. Filter Logic 
   const filteredLogs = logs.filter(log => {
-    // A. Text Search (Check if entry includes the ACTIVE search term)
-    const matchesSearch = log.entry.toLowerCase().includes(activeSearch.toLowerCase());
+    // A. Text Search (Checks ENTRY and SUBJECT)
+    const term = activeSearch.toLowerCase();
+    const entryMatch = log.entry.toLowerCase().includes(term);
+    const subjectMatch = log.subject ? log.subject.toLowerCase().includes(term) : false;
+    const matchesSearch = entryMatch || subjectMatch;
     
     // B. Category Filter
     let matchesCategory = true;
@@ -72,14 +76,23 @@ export default function HistoryPage() {
 
   const startEditing = (log) => {
     setEditingId(log.id);
+    setEditSubject(log.subject || ''); // Load Subject
     setEditText(log.entry);
     setEditType(log.type);
+    
     const parts = log.timestamp.split('T');
     setEditDate(parts[0]);
     setEditTime(parts[1]);
+    
     const cats = log.categories || [];
     setEditIsWork(cats.includes('Work') || log.category === 'Work');
     setEditIsHome(cats.includes('Home') || log.category === 'Home');
+  };
+
+  const cancelEditing = () => {
+    setEditingId(null);
+    setEditSubject('');
+    setEditText('');
   };
 
   const saveEdit = async (id) => {
@@ -94,6 +107,7 @@ export default function HistoryPage() {
 
     const logRef = doc(db, "logs", id);
     await updateDoc(logRef, {
+      subject: editSubject, // Save Subject
       entry: editText,
       type: editType,
       categories: activeCategories,
@@ -141,7 +155,7 @@ export default function HistoryPage() {
                 placeholder="Type keywords..." 
                 value={searchText}
                 onChange={(e) => setSearchText(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearchClick()} // Allow Enter key
+                onKeyDown={(e) => e.key === 'Enter' && handleSearchClick()} 
                 className="flex-1 p-3 border border-gray-300 rounded text-black"
               />
               <button 
@@ -193,6 +207,7 @@ export default function HistoryPage() {
                     <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={editIsWork} onChange={(e) => setEditIsWork(e.target.checked)} className="accent-blue-600"/><span className="text-sm text-black">Work</span></label>
                     <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={editIsHome} onChange={(e) => setEditIsHome(e.target.checked)} className="accent-green-600"/><span className="text-sm text-black">Home</span></label>
                   </div>
+                  
                   <div className="flex gap-2">
                     <select value={editType} onChange={(e) => setEditType(e.target.value)} className="p-1 border rounded text-black text-sm">
                         <option value="Do">Do</option><option value="Done">Done</option><option value="Note">Note</option>
@@ -200,9 +215,21 @@ export default function HistoryPage() {
                     <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="p-1 border rounded text-black text-sm"/>
                     <input type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} className="p-1 border rounded text-black text-sm"/>
                   </div>
+                  
+                  {/* Subject Edit */}
+                  <input 
+                    type="text" 
+                    value={editSubject} 
+                    onChange={(e) => setEditSubject(e.target.value)} 
+                    className="w-full p-2 border border-blue-300 rounded text-black text-sm font-bold"
+                    placeholder="Subject..."
+                  />
+
+                  {/* Entry Edit */}
                   <textarea value={editText} onChange={(e) => setEditText(e.target.value)} className="w-full p-2 border border-blue-300 rounded text-black text-sm" rows="3"></textarea>
+                  
                   <div className="flex gap-2 justify-end">
-                    <button onClick={() => setEditingId(null)} className="text-xs bg-gray-300 text-black px-2 py-1 rounded">Cancel</button>
+                    <button onClick={cancelEditing} className="text-xs bg-gray-300 text-black px-2 py-1 rounded">Cancel</button>
                     <button onClick={() => saveEdit(log.id)} className="text-xs bg-blue-600 text-white px-3 py-1 rounded">Save</button>
                   </div>
                 </div>
@@ -220,6 +247,10 @@ export default function HistoryPage() {
                       <button onClick={() => handleDelete(log.id)} className="text-red-600 text-xs font-bold hover:underline">X</button>
                     </div>
                   </div>
+                  
+                  {/* Display Subject */}
+                  {log.subject && <h4 className="font-bold text-gray-900 mb-1">{log.subject}</h4>}
+                  
                   <p className="text-gray-800 whitespace-pre-wrap">{log.entry}</p>
                 </>
               )}
