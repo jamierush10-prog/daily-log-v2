@@ -72,7 +72,6 @@ export default function HistoryPage() {
     }
   };
 
-  // --- NEW: CLOSE TICKET HANDLER ---
   const markAsClosed = async (id) => {
     const logRef = doc(db, "logs", id);
     await updateDoc(logRef, {
@@ -124,8 +123,8 @@ export default function HistoryPage() {
   const getBadgeColor = (type) => {
     switch(type) {
       case 'Open':    return 'bg-blue-100 text-blue-800 border border-blue-200';
-      case 'Closed':  return 'bg-green-100 text-green-800 border border-green-200';
-      case 'Done':    return 'bg-green-100 text-green-800'; // Legacy support
+      case 'Done':    return 'bg-green-100 text-green-800 border border-green-200'; // Task Done
+      case 'Closed':  return 'bg-gray-200 text-gray-800 border border-gray-300'; // Ticket Closed
       case 'Note':    return 'bg-yellow-100 text-yellow-800 border border-yellow-200';
       default: return 'bg-gray-100';
     }
@@ -189,6 +188,7 @@ export default function HistoryPage() {
                   <div className="flex gap-2">
                     <select value={editType} onChange={(e) => setEditType(e.target.value)} className="p-1 border rounded text-black text-sm">
                         <option value="Open">Open</option>
+                        <option value="Done">Done</option>
                         <option value="Closed">Closed</option>
                         <option value="Note">Note</option>
                     </select>
@@ -208,21 +208,19 @@ export default function HistoryPage() {
                   <div className="flex justify-between items-center mb-2">
                     <div className="flex gap-2 items-center">
                       
-                      {/* --- TICKET NUMBER & DATE --- */}
+                      {/* Ticket Number (if Open) */}
                       <span className="text-xs text-gray-400 font-mono mr-1">
                         {log.customId ? `#${log.customId}` : ''} {log.dateString} {log.timestamp.split('T')[1]}
                       </span>
 
-                      {/* --- CATEGORY BADGE --- */}
                       <span className="text-xs font-bold px-2 py-1 rounded border bg-gray-50 text-gray-600 border-gray-200">
                         {displayCats(log)}
                       </span>
 
-                      {/* --- TYPE BADGE (With Click-to-Close) --- */}
                       <div className="flex items-center">
                         <span className={`text-xs font-bold px-2 py-1 rounded ${getBadgeColor(log.type)} flex items-center gap-1`}>
                           {log.type}
-                          {/* Circle Button: Only for "Open" items */}
+                          {/* Close Circle only for OPEN items */}
                           {log.type === 'Open' && (
                             <button 
                               onClick={() => markAsClosed(log.id)}
@@ -243,7 +241,6 @@ export default function HistoryPage() {
                   {log.subject && <h4 className="font-bold text-gray-900 mb-1">{log.subject}</h4>}
                   <p className="text-gray-800 whitespace-pre-wrap">{log.entry}</p>
 
-                  {/* Thumbnail */}
                   {log.imageUrl && (
                     <div className="mt-3">
                       <p className="text-xs text-gray-400 mb-1">Attachment:</p>

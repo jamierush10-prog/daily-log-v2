@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { db, storage } from '../lib/firebase';
-import { collection, addDoc, query, orderBy, limit, getDocs } from 'firebase/firestore'; // Added getDocs/query tools
+import { collection, addDoc, query, orderBy, limit, getDocs } from 'firebase/firestore'; 
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import Link from 'next/link';
 
@@ -65,10 +65,9 @@ export default function Home() {
         imageUrl = await getDownloadURL(storageRef);
       }
 
-      // --- AUTO-INCREMENT LOGIC ---
+      // --- AUTO-INCREMENT LOGIC (Only for "Open" type) ---
       let newCustomId = null;
       if (type === 'Open') {
-        // Find the highest current ID
         const q = query(collection(db, "logs"), orderBy("customId", "desc"), limit(1));
         const snapshot = await getDocs(q);
         
@@ -76,7 +75,7 @@ export default function Home() {
           const lastId = snapshot.docs[0].data().customId || 0;
           newCustomId = lastId + 1;
         } else {
-          newCustomId = 1; // First one ever
+          newCustomId = 1; 
         }
       }
 
@@ -88,7 +87,7 @@ export default function Home() {
         subject: subject,
         entry: entry,
         imageUrl: imageUrl,
-        customId: newCustomId, // Save the number (e.g., 42)
+        customId: newCustomId, // Will be null for "Done" or "Note"
         timestamp: `${date}T${time}`,
         dateString: date,
         createdAt: new Date()
@@ -123,13 +122,14 @@ export default function Home() {
           </label>
         </div>
 
-        {/* Type Selector (Done -> Closed) */}
+        {/* Type Selector (Added "Done" back) */}
         <div className="mb-4">
           <label className="block text-sm font-bold text-gray-700 mb-1">Type</label>
           <select value={type} onChange={(e) => setType(e.target.value)} className="w-full p-3 border border-gray-300 rounded text-black bg-gray-50">
-            <option value="Open">Open</option>
-            <option value="Closed">Closed</option>
+            <option value="Open">Open (Ticket)</option>
+            <option value="Done">Done (Task)</option>
             <option value="Note">Note</option>
+            <option value="Closed">Closed</option>
           </select>
         </div>
 
