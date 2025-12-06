@@ -7,13 +7,13 @@ import Link from 'next/link';
 export default function HistoryPage() {
   const [logs, setLogs] = useState([]);
   
-  // Filters
+  // --- UI STATE ---
   const [searchText, setSearchText] = useState(''); 
   const [uiCategory, setUiCategory] = useState('All'); 
   const [uiDate, setUiDate] = useState('');
   const [uiShowContext, setUiShowContext] = useState(false);
 
-  // Active Filters
+  // --- ACTIVE FILTERS ---
   const [activeSearch, setActiveSearch] = useState(''); 
   const [activeCategory, setActiveCategory] = useState('All');
   const [activeDate, setActiveDate] = useState('');
@@ -30,6 +30,8 @@ export default function HistoryPage() {
   const [editIsHome, setEditIsHome] = useState(false);
   const [editTaskRef, setEditTaskRef] = useState('');
 
+  // UI Feedback
+  const [status, setStatus] = useState('');
   const [expandedImage, setExpandedImage] = useState(null);
 
   useEffect(() => {
@@ -74,50 +76,81 @@ export default function HistoryPage() {
     return matchesSearch && matchesCategory && isDateMatch;
   });
 
-  // --- 2. GROUPING & SORTING (The "Project Board" Logic) ---
+  // --- 2. GROUPING & SORTING ---
   const organizedLogs = (() => {
     const openTickets = [];
-    const childMap = {}; // Stores children for each ticket
+    const childMap = {};
     const looseLogs = [];
 
-    // First Pass: Identify Open Tickets vs Others
+    // First Pass
     filteredLogs.forEach(log => {
       if (log.type === 'Open' && log.customId) {
         openTickets.push(log);
-        childMap[log.customId] = []; // Prepare bucket
+        childMap[log.customId] = [];
       } else {
         looseLogs.push(log);
       }
     });
 
-    // Second Pass: Attach Related "Done" tasks to parents
+    // Second Pass
     const trulyLooseLogs = [];
     looseLogs.forEach(log => {
-      // If it's a Done task AND matches an Open Ticket currently in view...
       if (log.type === 'Done' && log.taskRef && childMap[log.taskRef]) {
-        // Add to child bucket, mark as child
         childMap[log.taskRef].push({ ...log, isChild: true });
       } else {
         trulyLooseLogs.push(log);
       }
     });
 
-    // Third Pass: Build final list (Open Tickets first, then their children, then everything else)
+    // Third Pass
     const finalOrder = [];
-    
-    // Add Tickets + Children
     openTickets.forEach(ticket => {
       finalOrder.push(ticket);
-      // Sort children by time (newest first)
       const children = childMap[ticket.customId].sort((a,b) => b.timestamp.localeCompare(a.timestamp));
       finalOrder.push(...children);
     });
-
-    // Add rest of logs
     finalOrder.push(...trulyLooseLogs);
 
     return finalOrder;
   })();
+
+  // --- 3. GENERATE AI BRIEF ---
+  const generateBrief = () => {
+    if (organizedLogs.length === 0) {
+      alert("No logs visible to report on.");
+      return;
+    }
+
+    setStatus('Generating...');
+
+    // Format the text based on exactly what is visible
+    const logText = organizedLogs.map(log => {
+      const time = log.timestamp.split('T')[1];
+      const cats = log.categories ? log.categories.join('/') : 'General';
+      const type = log.type;
+      const refInfo = log.customId ? `[TICKET #${log.customId}]` : (log.taskRef ? `[REF #${log.taskRef}]` : '');
+      const subject = log.subject ? ` - SUBJECT: ${log.subject}` : '';
+      const indent = log.isChild ? "   >>> " : ""; // Visual indent for AI
+      
+      return `${indent}[${log.dateString} ${time}] [${cats}] [${type}] ${refInfo}${subject}: ${log.entry}`;
+    }).join('\n');
+
+    const prompt = `Act as my Executive Officer. Review the following filtered log entries.
+These are the specific items I am currently reviewing.
+
+LOG DATA:
+${logText}
+
+REQUIREMENTS:
+1. Generate an After Action Report (AAR) summarizing progress on these specific items.
+2. Generate a Plan of the Day (POD) for next steps related to these items.
+3. If there are Open Tickets, prioritize them.
+`;
+
+    navigator.clipboard.writeText(prompt);
+    setStatus('Copied!');
+    setTimeout(() => setStatus(''), 2000);
+  };
 
 
   // Handlers
@@ -237,7 +270,16 @@ export default function HistoryPage() {
             </div>
           </div>
           
-          <button onClick={handleFilterClick} className="w-full bg-gray-800 text-white py-2 rounded font-bold hover:bg-black transition">Apply Filters</button>
+          {/* Action Buttons */}
+          <div className="flex gap-2">
+            <button onClick={handleFilterClick} className="flex-1 bg-gray-800 text-white py-3 rounded font-bold hover:bg-black transition">
+              Apply Filters
+            </button>
+            <button onClick={generateBrief} className="flex-1 bg-purple-600 text-white py-3 rounded font-bold hover:bg-purple-700 transition">
+              {status || "Copy AI Brief"}
+            </button>
+          </div>
+
         </div>
 
         {/* Results */}
@@ -246,10 +288,9 @@ export default function HistoryPage() {
             <div 
               key={log.id} 
               className={`bg-white p-4 rounded shadow border-l-4 border-gray-400 relative 
-                ${log.isChild ? 'ml-12 border-l-8 border-l-gray-300 bg-gray-50' : ''}`} /* INDENTATION LOGIC */
+                ${log.isChild ? 'ml-12 border-l-8 border-l-gray-300 bg-gray-50' : ''}`}
             >
               
-              {/* VISUAL CONNECTOR FOR CHILDREN */}
               {log.isChild && (
                 <div className="absolute -left-6 top-6 w-6 h-8 border-b-2 border-l-2 border-gray-300 rounded-bl-lg"></div>
               )}
