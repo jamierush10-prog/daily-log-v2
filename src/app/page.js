@@ -1,13 +1,13 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { db, storage } from '../lib/firebase';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, query, orderBy, limit, getDocs } from 'firebase/firestore'; // Added getDocs/query tools
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import Link from 'next/link';
 
 export default function Home() {
   // --- FORM STATE ---
-  const [type, setType] = useState('Open'); // CHANGED DEFAULT TO 'Open'
+  const [type, setType] = useState('Open');
   const [isWork, setIsWork] = useState(false);
   const [isHome, setIsHome] = useState(false);
   const [subject, setSubject] = useState('');
@@ -65,6 +65,21 @@ export default function Home() {
         imageUrl = await getDownloadURL(storageRef);
       }
 
+      // --- AUTO-INCREMENT LOGIC ---
+      let newCustomId = null;
+      if (type === 'Open') {
+        // Find the highest current ID
+        const q = query(collection(db, "logs"), orderBy("customId", "desc"), limit(1));
+        const snapshot = await getDocs(q);
+        
+        if (!snapshot.empty) {
+          const lastId = snapshot.docs[0].data().customId || 0;
+          newCustomId = lastId + 1;
+        } else {
+          newCustomId = 1; // First one ever
+        }
+      }
+
       // Save Log
       setStatus('Saving Log...');
       await addDoc(collection(db, "logs"), {
@@ -73,6 +88,7 @@ export default function Home() {
         subject: subject,
         entry: entry,
         imageUrl: imageUrl,
+        customId: newCustomId, // Save the number (e.g., 42)
         timestamp: `${date}T${time}`,
         dateString: date,
         createdAt: new Date()
@@ -107,12 +123,12 @@ export default function Home() {
           </label>
         </div>
 
-        {/* Type Selector (Updated "Do" to "Open") */}
+        {/* Type Selector (Done -> Closed) */}
         <div className="mb-4">
           <label className="block text-sm font-bold text-gray-700 mb-1">Type</label>
           <select value={type} onChange={(e) => setType(e.target.value)} className="w-full p-3 border border-gray-300 rounded text-black bg-gray-50">
-            <option value="Open">Open</option> {/* CHANGED HERE */}
-            <option value="Done">Done</option>
+            <option value="Open">Open</option>
+            <option value="Closed">Closed</option>
             <option value="Note">Note</option>
           </select>
         </div>
@@ -152,12 +168,10 @@ export default function Home() {
           />
         </div>
 
-        {/* Submit */}
         <button onClick={handleSubmit} className={`w-full py-4 rounded font-bold text-xl text-white transition-all shadow-md ${status === 'Saved!' ? 'bg-green-600' : 'bg-blue-600 hover:bg-blue-700'}`}>
           {status ? status : "Submit Log"}
         </button>
 
-        {/* Archive Link */}
         <div className="mt-8 pt-6 border-t border-gray-200">
           <Link href="/history">
             <button className="w-full bg-gray-800 text-white py-3 px-4 rounded font-bold hover:bg-black transition">
