@@ -6,19 +6,22 @@ import { collection, addDoc, query, orderBy, onSnapshot, limit, where, getDocs, 
 export default function Home() {
   const [type, setType] = useState('Do');
   
-  // 1. Checkboxes now default to FALSE (Empty)
+  // Main Form State
   const [isWork, setIsWork] = useState(false);
   const [isHome, setIsHome] = useState(false);
-
   const [entry, setEntry] = useState('');
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [status, setStatus] = useState('');
   const [logs, setLogs] = useState([]);
 
-  // NEW: State for Editing
-  const [editingId, setEditingId] = useState(null); // Which log is being edited?
-  const [editText, setEditText] = useState('');     // What is the new text?
+  // --- NEW: FULL EDITING STATE ---
+  const [editingId, setEditingId] = useState(null);
+  const [editText, setEditText] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editTime, setEditTime] = useState('');
+  const [editIsWork, setEditIsWork] = useState(false);
+  const [editIsHome, setEditIsHome] = useState(false);
 
   // Set Default Date/Time
   useEffect(() => {
@@ -84,7 +87,7 @@ export default function Home() {
     }
   };
 
-  // --- NEW: DELETE FUNCTION ---
+  // Delete Function
   const handleDelete = async (id) => {
     if (confirm("Are you sure you want to delete this log?")) {
       try {
@@ -95,10 +98,20 @@ export default function Home() {
     }
   };
 
-  // --- NEW: EDIT FUNCTIONS ---
+  // --- EXPANDED EDIT FUNCTIONS ---
   const startEditing = (log) => {
     setEditingId(log.id);
     setEditText(log.entry);
+    
+    // Split timestamp back into Date and Time
+    const parts = log.timestamp.split('T');
+    setEditDate(parts[0]);
+    setEditTime(parts[1]);
+
+    // Set checkboxes based on saved data
+    const cats = log.categories || [];
+    setEditIsWork(cats.includes('Work') || log.category === 'Work');
+    setEditIsHome(cats.includes('Home') || log.category === 'Home');
   };
 
   const cancelEditing = () => {
@@ -107,10 +120,22 @@ export default function Home() {
   };
 
   const saveEdit = async (id) => {
+    const activeCategories = [];
+    if (editIsWork) activeCategories.push('Work');
+    if (editIsHome) activeCategories.push('Home');
+
+    if (activeCategories.length === 0) {
+      alert("Please check at least one category.");
+      return;
+    }
+
     try {
       const logRef = doc(db, "logs", id);
       await updateDoc(logRef, {
-        entry: editText
+        entry: editText,
+        categories: activeCategories,
+        dateString: editDate,
+        timestamp: `${editDate}T${editTime}`
       });
       setEditingId(null); // Exit edit mode
     } catch (e) {
@@ -250,56 +275,69 @@ REQUIREMENTS:
         <p className="text-center text-xs text-gray-500 mt-2">{status}</p>
       </div>
 
-      {/* History List with Edit/Delete */}
+      {/* History List */}
       <div className="w-full max-w-md">
         <h3 className="text-xl font-bold text-gray-700 mb-4">Live Feed</h3>
         <div className="space-y-3">
           {logs.map((log) => (
             <div key={log.id} className="bg-white p-4 rounded shadow border-l-4 border-blue-500">
               
-              {/* Header Row */}
-              <div className="flex justify-between items-center mb-2">
-                <div className="flex gap-2">
-                  <span className="text-xs font-bold px-2 py-1 rounded border bg-gray-50 text-gray-600 border-gray-200">
-                    {displayCats(log)}
-                  </span>
-                  <span className={`text-xs font-bold px-2 py-1 rounded ${getBadgeColor(log.type)}`}>{log.type}</span>
-                </div>
-                
-                {/* Time + Action Buttons */}
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500 mr-1">{log.timestamp.replace('T', ' ')}</span>
-                  
-                  {/* Edit/Delete Buttons (Only show if NOT editing this specific row) */}
-                  {editingId !== log.id && (
-                    <>
-                      <button onClick={() => startEditing(log)} className="text-blue-600 text-xs font-bold hover:underline">
-                        Edit
-                      </button>
-                      <button onClick={() => handleDelete(log.id)} className="text-red-600 text-xs font-bold hover:underline">
-                        X
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* Content Logic: Show Text OR Show Input Box */}
               {editingId === log.id ? (
-                <div className="mt-2">
+                // --- EDIT MODE VIEW ---
+                <div className="flex flex-col gap-3">
+                  <p className="text-sm font-bold text-blue-600 mb-1">Editing Entry...</p>
+                  
+                  {/* Edit Categories */}
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={editIsWork} onChange={(e) => setEditIsWork(e.target.checked)} className="accent-blue-600"/>
+                      <span className="text-sm">Work</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={editIsHome} onChange={(e) => setEditIsHome(e.target.checked)} className="accent-green-600"/>
+                      <span className="text-sm">Home</span>
+                    </label>
+                  </div>
+
+                  {/* Edit Date/Time */}
+                  <div className="flex gap-2">
+                    <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="flex-1 p-2 border rounded text-sm"/>
+                    <input type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} className="flex-1 p-2 border rounded text-sm"/>
+                  </div>
+
+                  {/* Edit Text */}
                   <textarea 
                     value={editText} 
                     onChange={(e) => setEditText(e.target.value)}
-                    className="w-full p-2 border border-blue-300 rounded text-black text-sm mb-2"
+                    className="w-full p-2 border border-blue-300 rounded text-black text-sm"
                     rows="3"
                   ></textarea>
+
+                  {/* Save/Cancel Buttons */}
                   <div className="flex gap-2 justify-end">
-                    <button onClick={cancelEditing} className="text-xs text-gray-500 font-bold px-2 py-1">Cancel</button>
-                    <button onClick={() => saveEdit(log.id)} className="text-xs bg-blue-600 text-white font-bold px-3 py-1 rounded">Save</button>
+                    <button onClick={cancelEditing} className="text-xs text-gray-500 font-bold px-2 py-1 bg-gray-100 rounded">Cancel</button>
+                    <button onClick={() => saveEdit(log.id)} className="text-xs bg-blue-600 text-white font-bold px-3 py-1 rounded">Save Changes</button>
                   </div>
                 </div>
               ) : (
-                <p className="text-gray-800 whitespace-pre-wrap">{log.entry}</p>
+                // --- NORMAL VIEW ---
+                <>
+                  <div className="flex justify-between items-center mb-2">
+                    <div className="flex gap-2">
+                      <span className="text-xs font-bold px-2 py-1 rounded border bg-gray-50 text-gray-600 border-gray-200">
+                        {displayCats(log)}
+                      </span>
+                      <span className={`text-xs font-bold px-2 py-1 rounded ${getBadgeColor(log.type)}`}>{log.type}</span>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500 mr-1">{log.timestamp.replace('T', ' ')}</span>
+                      <button onClick={() => startEditing(log)} className="text-blue-600 text-xs font-bold hover:underline">Edit</button>
+                      <button onClick={() => handleDelete(log.id)} className="text-red-600 text-xs font-bold hover:underline">X</button>
+                    </div>
+                  </div>
+                  <p className="text-gray-800 whitespace-pre-wrap">{log.entry}</p>
+                </>
               )}
 
             </div>
