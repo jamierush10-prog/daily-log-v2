@@ -2,12 +2,16 @@
 import { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
 import { collection, addDoc, query, orderBy, onSnapshot, limit, where, getDocs, deleteDoc, updateDoc, doc } from 'firebase/firestore';
+import Link from 'next/link';
 
 export default function Home() {
   // Main Form State
   const [type, setType] = useState('Do');
+  
+  // Checkboxes default to FALSE (Empty)
   const [isWork, setIsWork] = useState(false);
   const [isHome, setIsHome] = useState(false);
+
   const [entry, setEntry] = useState('');
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
@@ -19,11 +23,11 @@ export default function Home() {
   const [editText, setEditText] = useState('');
   const [editDate, setEditDate] = useState('');
   const [editTime, setEditTime] = useState('');
-  const [editType, setEditType] = useState('Do'); // NEW: Track Type during edit
+  const [editType, setEditType] = useState('Do'); 
   const [editIsWork, setEditIsWork] = useState(false);
   const [editIsHome, setEditIsHome] = useState(false);
 
-  // Set Default Date/Time
+  // 1. Set Default Date/Time (Local Time Fix)
   useEffect(() => {
     const initDateTime = () => {
       const now = new Date();
@@ -42,7 +46,7 @@ export default function Home() {
     initDateTime();
   }, []);
 
-  // Live Feed Subscription
+  // 2. Live Feed Subscription
   useEffect(() => {
     const q = query(collection(db, "logs"), orderBy("timestamp", "desc"), limit(20));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -55,7 +59,7 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
-  // Submit Handler
+  // 3. Submit Handler
   const handleSubmit = async () => {
     if (!entry) return; 
     
@@ -87,7 +91,7 @@ export default function Home() {
     }
   };
 
-  // Delete Function
+  // 4. Delete Function
   const handleDelete = async (id) => {
     if (confirm("Are you sure you want to delete this log?")) {
       try {
@@ -98,7 +102,7 @@ export default function Home() {
     }
   };
 
-  // --- EXPANDED EDIT FUNCTIONS ---
+  // 5. --- EXPANDED EDIT FUNCTIONS ---
   const startEditing = (log) => {
     setEditingId(log.id);
     setEditText(log.entry);
@@ -109,7 +113,7 @@ export default function Home() {
     setEditDate(parts[0]);
     setEditTime(parts[1]);
 
-    // Set checkboxes
+    // Set checkboxes based on saved data
     const cats = log.categories || [];
     setEditIsWork(cats.includes('Work') || log.category === 'Work');
     setEditIsHome(cats.includes('Home') || log.category === 'Home');
@@ -134,7 +138,7 @@ export default function Home() {
       const logRef = doc(db, "logs", id);
       await updateDoc(logRef, {
         entry: editText,
-        type: editType, // Save the new type
+        type: editType,
         categories: activeCategories,
         dateString: editDate,
         timestamp: `${editDate}T${editTime}`
@@ -145,7 +149,7 @@ export default function Home() {
     }
   };
 
-  // Report Generator
+  // 6. AI Report Generator
   const generateReport = async () => {
     setStatus('Generating...');
     
@@ -199,6 +203,7 @@ REQUIREMENTS:
     setTimeout(() => setStatus(''), 2000);
   };
 
+  // Helpers
   const getBadgeColor = (type) => {
     switch(type) {
       case 'Do': return 'bg-blue-100 text-blue-800';
@@ -219,6 +224,7 @@ REQUIREMENTS:
         
         <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">Log Entry</h2>
 
+        {/* Checkboxes */}
         <div className="flex justify-center gap-8 mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
           <label className="flex items-center gap-3 cursor-pointer select-none">
             <input 
@@ -241,6 +247,7 @@ REQUIREMENTS:
           </label>
         </div>
 
+        {/* Inputs */}
         <div className="mb-4">
           <label className="block text-sm font-bold text-gray-700 mb-1">Type</label>
           <select value={type} onChange={(e) => setType(e.target.value)} className="w-full p-3 border border-gray-300 rounded text-black bg-gray-50">
@@ -275,6 +282,16 @@ REQUIREMENTS:
           </button>
         </div>
         <p className="text-center text-xs text-gray-500 mt-2">{status}</p>
+
+        {/* --- LINK TO ARCHIVE PAGE --- */}
+        <div className="mt-6 pt-6 border-t border-gray-100">
+          <Link href="/history">
+            <button className="w-full bg-gray-800 text-white py-3 px-4 rounded font-bold hover:bg-black transition">
+              View Full Archive & Search
+            </button>
+          </Link>
+        </div>
+
       </div>
 
       {/* History List */}
@@ -293,20 +310,16 @@ REQUIREMENTS:
                   <div className="flex gap-4">
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input type="checkbox" checked={editIsWork} onChange={(e) => setEditIsWork(e.target.checked)} className="accent-blue-600"/>
-                      <span className="text-sm">Work</span>
+                      <span className="text-sm text-black">Work</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input type="checkbox" checked={editIsHome} onChange={(e) => setEditIsHome(e.target.checked)} className="accent-green-600"/>
-                      <span className="text-sm">Home</span>
+                      <span className="text-sm text-black">Home</span>
                     </label>
                   </div>
 
-                  {/* Edit Type (NEW) */}
-                  <select 
-                    value={editType} 
-                    onChange={(e) => setEditType(e.target.value)}
-                    className="w-full p-2 border border-blue-300 rounded text-black text-sm"
-                  >
+                  {/* Edit Type */}
+                  <select value={editType} onChange={(e) => setEditType(e.target.value)} className="w-full p-2 border border-blue-300 rounded text-black text-sm">
                     <option value="Do">Do</option>
                     <option value="Done">Done</option>
                     <option value="Note">Note</option>
@@ -314,8 +327,8 @@ REQUIREMENTS:
 
                   {/* Edit Date/Time */}
                   <div className="flex gap-2">
-                    <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="flex-1 p-2 border rounded text-sm"/>
-                    <input type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} className="flex-1 p-2 border rounded text-sm"/>
+                    <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="flex-1 p-2 border rounded text-black text-sm"/>
+                    <input type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} className="flex-1 p-2 border rounded text-black text-sm"/>
                   </div>
 
                   {/* Edit Text */}
