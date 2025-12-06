@@ -6,7 +6,7 @@ import { collection, addDoc, query, orderBy, onSnapshot, limit, where, getDocs }
 export default function Home() {
   const [type, setType] = useState('Do');
   
-  // Changed to independent booleans for checkboxes
+  // Checkboxes state
   const [isWork, setIsWork] = useState(true);
   const [isHome, setIsHome] = useState(false);
 
@@ -16,22 +16,24 @@ export default function Home() {
   const [status, setStatus] = useState('');
   const [logs, setLogs] = useState([]);
 
-  // 1. Set Default Date/Time (Fixed to use LOCAL time, not UTC)
+  // 1. Set Default Date/Time (Robust Local Time Fix)
   useEffect(() => {
-    const now = new Date();
-    
-    // Manual formatting to ensure we get local Alabama time, not UTC
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const localDate = `${year}-${month}-${day}`;
-    
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const localTime = `${hours}:${minutes}`;
+    const initDateTime = () => {
+      const now = new Date();
+      // Manual formatting to ensure local time (not UTC)
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const localDate = `${year}-${month}-${day}`;
+      
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const localTime = `${hours}:${minutes}`;
 
-    setDate(localDate);
-    setTime(localTime);
+      setDate(localDate);
+      setTime(localTime);
+    };
+    initDateTime();
   }, []);
 
   // 2. Live Feed Subscription
@@ -51,13 +53,13 @@ export default function Home() {
   const handleSubmit = async () => {
     if (!entry) return; 
     
-    // Build the category list based on checkboxes
+    // Build list of selected categories
     const activeCategories = [];
     if (isWork) activeCategories.push('Work');
     if (isHome) activeCategories.push('Home');
 
     if (activeCategories.length === 0) {
-      alert("Please select at least one category (Work or Home)");
+      alert("Please check at least Work or Home.");
       return;
     }
 
@@ -65,7 +67,7 @@ export default function Home() {
     try {
       await addDoc(collection(db, "logs"), {
         type: type,
-        categories: activeCategories, // Save as a list: ['Work', 'Home']
+        categories: activeCategories, // Saves as ['Work'] or ['Work', 'Home']
         entry: entry,
         timestamp: `${date}T${time}`,
         dateString: date,
@@ -80,7 +82,7 @@ export default function Home() {
     }
   };
 
-  // 4. AI Report Generator
+  // 4. AI Report Generator (Smart Logic)
   const generateReport = async () => {
     setStatus('Generating...');
     
@@ -94,16 +96,16 @@ export default function Home() {
       return;
     }
 
-    // Filter Logic: Check if the log includes the category
-    // (We also check 'l.category' to support your older log entries)
+    // Logic: If a log has "Work" in its list, it goes to Work Brief.
+    // If it has "Home", it goes to Home Brief.
+    // If it has BOTH, it goes to BOTH.
+    
     const workLogs = dayLogs.filter(l => 
-      (l.categories && l.categories.includes('Work')) || 
-      l.category === 'Work' || l.category === 'Both'
+      (l.categories && l.categories.includes('Work')) || l.category === 'Work' || l.category === 'Both'
     );
     
     const homeLogs = dayLogs.filter(l => 
-      (l.categories && l.categories.includes('Home')) || 
-      l.category === 'Home' || l.category === 'Both'
+      (l.categories && l.categories.includes('Home')) || l.category === 'Home' || l.category === 'Both'
     );
 
     const formatLogs = (list) => list.map(l => `[${l.timestamp.split('T')[1]}] [${l.type}] ${l.entry}`).join('\n');
@@ -147,10 +149,10 @@ REQUIREMENTS:
     }
   };
 
-  // Helper to display categories in the history list
+  // Helper to show category tags
   const displayCats = (log) => {
-    if (log.categories) return log.categories.join(' & '); // New format
-    return log.category || 'Work'; // Old format fallback
+    if (log.categories) return log.categories.join(' & ');
+    return log.category || 'Work';
   };
 
   return (
@@ -159,8 +161,8 @@ REQUIREMENTS:
         
         <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">Log Entry</h2>
 
-        {/* --- CHECKBOXES FOR CATEGORIES --- */}
-        <div className="flex justify-center gap-8 mb-6 p-3 bg-gray-50 rounded-lg border border-gray-200">
+        {/* --- CHECKBOXES (No "Both" Button) --- */}
+        <div className="flex justify-center gap-8 mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
           
           <label className="flex items-center gap-3 cursor-pointer select-none">
             <input 
@@ -229,11 +231,9 @@ REQUIREMENTS:
             <div key={log.id} className="bg-white p-4 rounded shadow border-l-4 border-blue-500">
               <div className="flex justify-between items-center mb-2">
                 <div className="flex gap-2">
-                  {/* Category Badge */}
                   <span className="text-xs font-bold px-2 py-1 rounded border bg-gray-50 text-gray-600 border-gray-200">
                     {displayCats(log)}
                   </span>
-                  {/* Type Badge */}
                   <span className={`text-xs font-bold px-2 py-1 rounded ${getBadgeColor(log.type)}`}>{log.type}</span>
                 </div>
                 <span className="text-xs text-gray-500">{log.timestamp.replace('T', ' ')}</span>
