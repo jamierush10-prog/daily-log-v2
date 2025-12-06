@@ -8,14 +8,13 @@ export default function Home() {
   // Main Form State
   const [type, setType] = useState('Do');
   
-  // Checkboxes default to FALSE
+  // Checkboxes
   const [isWork, setIsWork] = useState(false);
   const [isHome, setIsHome] = useState(false);
 
-  // New Subject State
+  // Data State
   const [subject, setSubject] = useState('');
   const [entry, setEntry] = useState('');
-  
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [status, setStatus] = useState('');
@@ -23,7 +22,7 @@ export default function Home() {
 
   // --- EDITING STATE ---
   const [editingId, setEditingId] = useState(null);
-  const [editSubject, setEditSubject] = useState(''); // New for Edit
+  const [editSubject, setEditSubject] = useState('');
   const [editText, setEditText] = useState('');
   const [editDate, setEditDate] = useState('');
   const [editTime, setEditTime] = useState('');
@@ -31,7 +30,7 @@ export default function Home() {
   const [editIsWork, setEditIsWork] = useState(false);
   const [editIsHome, setEditIsHome] = useState(false);
 
-  // 1. Set Default Date/Time (Local Time Fix)
+  // 1. Set Default Date/Time
   useEffect(() => {
     const initDateTime = () => {
       const now = new Date();
@@ -50,7 +49,7 @@ export default function Home() {
     initDateTime();
   }, []);
 
-  // 2. Live Feed Subscription
+  // 2. Live Feed
   useEffect(() => {
     const q = query(collection(db, "logs"), orderBy("timestamp", "desc"), limit(20));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -81,7 +80,7 @@ export default function Home() {
       await addDoc(collection(db, "logs"), {
         type: type,
         categories: activeCategories,
-        subject: subject, // Save the Subject
+        subject: subject,
         entry: entry,
         timestamp: `${date}T${time}`,
         dateString: date,
@@ -89,7 +88,7 @@ export default function Home() {
       });
       setStatus('Saved!');
       setEntry(''); 
-      setSubject(''); // Clear subject
+      setSubject('');
       setTimeout(() => setStatus(''), 2000);
     } catch (e) {
       console.error("Error: ", e);
@@ -108,19 +107,17 @@ export default function Home() {
     }
   };
 
-  // 5. --- EXPANDED EDIT FUNCTIONS ---
+  // 5. Edit Functions
   const startEditing = (log) => {
     setEditingId(log.id);
-    setEditSubject(log.subject || ''); // Load Subject
+    setEditSubject(log.subject || '');
     setEditText(log.entry);
     setEditType(log.type); 
     
-    // Split timestamp
     const parts = log.timestamp.split('T');
     setEditDate(parts[0]);
     setEditTime(parts[1]);
 
-    // Set checkboxes
     const cats = log.categories || [];
     setEditIsWork(cats.includes('Work') || log.category === 'Work');
     setEditIsHome(cats.includes('Home') || log.category === 'Home');
@@ -145,7 +142,7 @@ export default function Home() {
     try {
       const logRef = doc(db, "logs", id);
       await updateDoc(logRef, {
-        subject: editSubject, // Update Subject
+        subject: editSubject,
         entry: editText,
         type: editType,
         categories: activeCategories,
@@ -158,13 +155,28 @@ export default function Home() {
     }
   };
 
-  // 6. AI Report Generator
-  const generateReport = async () => {
-    setStatus('Generating...');
-    
+  // --- 6. AI HELPERS (Report & Feedback) ---
+  
+  // Helper to fetch today's logs
+  const getDailyLogs = async () => {
     const q = query(collection(db, "logs"), where("dateString", "==", date));
     const querySnapshot = await getDocs(q);
     const dayLogs = querySnapshot.docs.map(doc => doc.data());
+    return dayLogs;
+  };
+
+  // Helper to format logs into text
+  const formatForAI = (list) => {
+    return list.map(l => {
+      const sub = l.subject ? ` - ${l.subject.toUpperCase()}` : '';
+      return `[${l.timestamp.split('T')[1]}] [${l.type}]${sub}: ${l.entry}`;
+    }).join('\n');
+  };
+
+  // A. Generate Standard Brief
+  const generateReport = async () => {
+    setStatus('Generating...');
+    const dayLogs = await getDailyLogs();
 
     if (dayLogs.length === 0) {
       alert("No logs found for this date!");
@@ -172,19 +184,8 @@ export default function Home() {
       return;
     }
     
-    const workLogs = dayLogs.filter(l => 
-      (l.categories && l.categories.includes('Work')) || l.category === 'Work' || l.category === 'Both'
-    );
-    
-    const homeLogs = dayLogs.filter(l => 
-      (l.categories && l.categories.includes('Home')) || l.category === 'Home' || l.category === 'Both'
-    );
-
-    // Update AI format to include Subject
-    const formatLogs = (list) => list.map(l => {
-      const sub = l.subject ? ` - ${l.subject.toUpperCase()}` : '';
-      return `[${l.timestamp.split('T')[1]}] [${l.type}]${sub}: ${l.entry}`;
-    }).join('\n');
+    const workLogs = dayLogs.filter(l => (l.categories && l.categories.includes('Work')) || l.category === 'Work' || l.category === 'Both');
+    const homeLogs = dayLogs.filter(l => (l.categories && l.categories.includes('Home')) || l.category === 'Home' || l.category === 'Both');
 
     const prompt = `Act as my Executive Officer. Here are my logs for ${date}.
 Please generate TWO SEPARATE REPORTS based on the data below.
@@ -193,7 +194,7 @@ Please generate TWO SEPARATE REPORTS based on the data below.
 REPORT 1: WORK MISSION
 =========================================
 LOG DATA:
-${formatLogs(workLogs)}
+${formatForAI(workLogs)}
 
 REQUIREMENTS:
 1. Work After Action Report (AAR).
@@ -203,7 +204,7 @@ REQUIREMENTS:
 REPORT 2: HOME FRONT
 =========================================
 LOG DATA:
-${formatLogs(homeLogs)}
+${formatForAI(homeLogs)}
 
 REQUIREMENTS:
 1. Home After Action Report (AAR).
@@ -212,6 +213,37 @@ REQUIREMENTS:
 
     navigator.clipboard.writeText(prompt);
     alert("Briefing copied to clipboard!");
+    setStatus('Copied!');
+    setTimeout(() => setStatus(''), 2000);
+  };
+
+  // B. NEW: Generate Critique/Feedback
+  const generateFeedback = async () => {
+    setStatus('Analyzing...');
+    const dayLogs = await getDailyLogs();
+
+    if (dayLogs.length === 0) {
+      alert("No logs found for this date!");
+      setStatus('');
+      return;
+    }
+
+    const allLogsText = formatForAI(dayLogs);
+
+    const prompt = `Act as a ruthless Performance Coach. I need you to review my log entries for today (${date}) and give me critical feedback.
+
+LOG DATA:
+${allLogsText}
+
+REQUIREMENTS:
+1. **Clarity Check:** Are my entries specific enough? (e.g., did I say "Worked on project" or "Completed Phase 1 of Project X"?)
+2. **Time Gaps:** Identify any major gaps in time where nothing was logged.
+3. **Efficiency:** Based on the "Do" vs "Done" ratio, was I productive?
+4. **Actionable Advice:** Give me 1 specific thing I should do differently tomorrow to improve my logging or performance.
+`;
+
+    navigator.clipboard.writeText(prompt);
+    alert("Feedback Prompt copied! Paste into AI.");
     setStatus('Copied!');
     setTimeout(() => setStatus(''), 2000);
   };
@@ -281,7 +313,7 @@ REQUIREMENTS:
           </div>
         </div>
 
-        {/* --- NEW SUBJECT FIELD --- */}
+        {/* Subject */}
         <div className="mb-2">
           <label className="block text-sm font-bold text-gray-700 mb-1">Subject</label>
           <input 
@@ -298,12 +330,16 @@ REQUIREMENTS:
           <textarea value={entry} onChange={(e) => setEntry(e.target.value)} className="w-full p-3 border border-gray-300 rounded h-32 text-black bg-gray-50" placeholder="Log details..."></textarea>
         </div>
 
+        {/* --- THREE BUTTONS ROW --- */}
         <div className="flex gap-2">
-          <button onClick={handleSubmit} className="flex-1 bg-blue-600 text-white py-3 px-4 rounded hover:bg-blue-700 font-bold">
+          <button onClick={handleSubmit} className="flex-1 bg-blue-600 text-white py-3 px-2 rounded hover:bg-blue-700 font-bold text-sm">
             Submit
           </button>
-          <button onClick={generateReport} className="flex-1 bg-purple-600 text-white py-3 px-4 rounded hover:bg-purple-700 font-bold">
+          <button onClick={generateReport} className="flex-1 bg-purple-600 text-white py-3 px-2 rounded hover:bg-purple-700 font-bold text-sm">
             Copy Brief
+          </button>
+          <button onClick={generateFeedback} className="flex-1 bg-orange-600 text-white py-3 px-2 rounded hover:bg-orange-700 font-bold text-sm">
+            Analyze
           </button>
         </div>
         <p className="text-center text-xs text-gray-500 mt-2">{status}</p>
@@ -327,7 +363,7 @@ REQUIREMENTS:
             <div key={log.id} className="bg-white p-4 rounded shadow border-l-4 border-blue-500">
               
               {editingId === log.id ? (
-                // --- EDIT MODE VIEW ---
+                // EDIT MODE
                 <div className="flex flex-col gap-3">
                   <p className="text-sm font-bold text-blue-600 mb-1">Editing Entry...</p>
                   
@@ -353,7 +389,6 @@ REQUIREMENTS:
                     <input type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} className="flex-1 p-2 border rounded text-black text-sm"/>
                   </div>
 
-                  {/* Edit Subject */}
                   <input 
                     type="text" 
                     value={editSubject} 
@@ -362,13 +397,7 @@ REQUIREMENTS:
                     placeholder="Subject..."
                   />
 
-                  {/* Edit Text */}
-                  <textarea 
-                    value={editText} 
-                    onChange={(e) => setEditText(e.target.value)}
-                    className="w-full p-2 border border-blue-300 rounded text-black text-sm"
-                    rows="3"
-                  ></textarea>
+                  <textarea value={editText} onChange={(e) => setEditText(e.target.value)} className="w-full p-2 border border-blue-300 rounded text-black text-sm" rows="3"></textarea>
 
                   <div className="flex gap-2 justify-end">
                     <button onClick={cancelEditing} className="text-xs text-gray-500 font-bold px-2 py-1 bg-gray-100 rounded">Cancel</button>
@@ -376,7 +405,7 @@ REQUIREMENTS:
                   </div>
                 </div>
               ) : (
-                // --- NORMAL VIEW ---
+                // NORMAL VIEW
                 <>
                   <div className="flex justify-between items-center mb-2">
                     <div className="flex gap-2">
@@ -392,7 +421,6 @@ REQUIREMENTS:
                       <button onClick={() => handleDelete(log.id)} className="text-red-600 text-xs font-bold hover:underline">X</button>
                     </div>
                   </div>
-                  {/* Display Subject if present */}
                   {log.subject && <h4 className="font-bold text-gray-900 mb-1">{log.subject}</h4>}
                   <p className="text-gray-800 whitespace-pre-wrap">{log.entry}</p>
                 </>
