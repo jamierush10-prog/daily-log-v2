@@ -7,17 +7,17 @@ import Link from 'next/link';
 export default function HistoryPage() {
   const [logs, setLogs] = useState([]);
   
-  // --- UI STATE ---
+  // Filters
   const [searchText, setSearchText] = useState(''); 
   const [uiCategory, setUiCategory] = useState('All'); 
   const [uiDate, setUiDate] = useState('');
-  const [uiShowContext, setUiShowContext] = useState(false); // NEW: Context Toggle
+  const [uiShowContext, setUiShowContext] = useState(false);
 
-  // --- ACTIVE FILTERS ---
+  // Active Filters
   const [activeSearch, setActiveSearch] = useState(''); 
   const [activeCategory, setActiveCategory] = useState('All');
   const [activeDate, setActiveDate] = useState('');
-  const [activeShowContext, setActiveShowContext] = useState(false); // Active state for logic
+  const [activeShowContext, setActiveShowContext] = useState(false);
 
   // Editing State
   const [editingId, setEditingId] = useState(null);
@@ -44,63 +44,88 @@ export default function HistoryPage() {
     return () => unsubscribe();
   }, []);
 
-  // --- SMART FILTER LOGIC ---
-  const filteredLogs = (() => {
-    // 1. First, basic filtering (Search Text & Category)
-    // We do this first because these apply to EVERYTHING
-    const baseFiltered = logs.filter(log => {
-      const term = activeSearch.toLowerCase();
-      const entryMatch = log.entry.toLowerCase().includes(term);
-      const subjectMatch = log.subject ? log.subject.toLowerCase().includes(term) : false;
-      const matchesSearch = entryMatch || subjectMatch;
-      
-      let matchesCategory = true;
-      if (activeCategory === 'Work') {
-        matchesCategory = (log.categories && log.categories.includes('Work')) || log.category === 'Work' || log.category === 'Both';
-      } else if (activeCategory === 'Home') {
-        matchesCategory = (log.categories && log.categories.includes('Home')) || log.category === 'Home' || log.category === 'Both';
+  // --- 1. FILTERING ---
+  const filteredLogs = logs.filter(log => {
+    // Search
+    const term = activeSearch.toLowerCase();
+    const entryMatch = log.entry.toLowerCase().includes(term);
+    const subjectMatch = log.subject ? log.subject.toLowerCase().includes(term) : false;
+    const matchesSearch = entryMatch || subjectMatch;
+    
+    // Category
+    let matchesCategory = true;
+    if (activeCategory === 'Work') {
+      matchesCategory = (log.categories && log.categories.includes('Work')) || log.category === 'Work' || log.category === 'Both';
+    } else if (activeCategory === 'Home') {
+      matchesCategory = (log.categories && log.categories.includes('Home')) || log.category === 'Home' || log.category === 'Both';
+    }
+
+    // Logic for Date/Context
+    const openTicketIds = new Set(logs.filter(l => l.type === 'Open' && l.customId).map(l => l.customId.toString()));
+    const isDateMatch = activeDate ? (log.dateString === activeDate) : true;
+
+    if (activeShowContext) {
+      if (isDateMatch) return true;
+      if (log.type === 'Open') return true;
+      if (log.type === 'Done' && log.taskRef && openTicketIds.has(log.taskRef.toString())) return true;
+      return false;
+    }
+
+    return matchesSearch && matchesCategory && isDateMatch;
+  });
+
+  // --- 2. GROUPING & SORTING (The "Project Board" Logic) ---
+  const organizedLogs = (() => {
+    const openTickets = [];
+    const childMap = {}; // Stores children for each ticket
+    const looseLogs = [];
+
+    // First Pass: Identify Open Tickets vs Others
+    filteredLogs.forEach(log => {
+      if (log.type === 'Open' && log.customId) {
+        openTickets.push(log);
+        childMap[log.customId] = []; // Prepare bucket
+      } else {
+        looseLogs.push(log);
       }
-      return matchesSearch && matchesCategory;
     });
 
-    // 2. Identify "Open" IDs (We need this for the context logic)
-    // We need to know which tickets are currently Open to find their children
-    const openTicketIds = new Set(
-      baseFiltered.filter(l => l.type === 'Open' && l.customId).map(l => l.customId.toString())
-    );
-
-    // 3. Final Filter (Date + Context)
-    return baseFiltered.filter(log => {
-      // Rule A: Matches the Date exactly
-      const isDateMatch = activeDate ? (log.dateString === activeDate) : true;
-
-      // Rule B: Context Mode Logic
-      if (activeShowContext) {
-        // Include if Date Matches OR...
-        if (isDateMatch) return true;
-
-        // ...It is an OPEN ticket
-        if (log.type === 'Open') return true;
-
-        // ...It is a DONE task linked to an Open Ticket
-        if (log.type === 'Done' && log.taskRef && openTicketIds.has(log.taskRef.toString())) {
-          return true;
-        }
-        
-        return false;
+    // Second Pass: Attach Related "Done" tasks to parents
+    const trulyLooseLogs = [];
+    looseLogs.forEach(log => {
+      // If it's a Done task AND matches an Open Ticket currently in view...
+      if (log.type === 'Done' && log.taskRef && childMap[log.taskRef]) {
+        // Add to child bucket, mark as child
+        childMap[log.taskRef].push({ ...log, isChild: true });
+      } else {
+        trulyLooseLogs.push(log);
       }
-
-      // Default: Strict Date Match only
-      return isDateMatch;
     });
+
+    // Third Pass: Build final list (Open Tickets first, then their children, then everything else)
+    const finalOrder = [];
+    
+    // Add Tickets + Children
+    openTickets.forEach(ticket => {
+      finalOrder.push(ticket);
+      // Sort children by time (newest first)
+      const children = childMap[ticket.customId].sort((a,b) => b.timestamp.localeCompare(a.timestamp));
+      finalOrder.push(...children);
+    });
+
+    // Add rest of logs
+    finalOrder.push(...trulyLooseLogs);
+
+    return finalOrder;
   })();
 
+
+  // Handlers
   const handleSearchClick = () => setActiveSearch(searchText);
-  
   const handleFilterClick = () => { 
     setActiveCategory(uiCategory); 
     setActiveDate(uiDate); 
-    setActiveShowContext(uiShowContext); // Apply the toggle
+    setActiveShowContext(uiShowContext); 
   };
 
   const handleDelete = async (id) => {
@@ -199,23 +224,14 @@ export default function HistoryPage() {
               </select>
             </div>
             
-            {/* DATE + TOGGLE ROW */}
             <div>
               <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Date</label>
               <div className="flex items-center gap-2">
                 <input type="date" value={uiDate} onChange={(e) => setUiDate(e.target.value)} className="w-full p-2 border border-gray-300 rounded text-black"/>
                 
-                {/* --- NEW TOGGLE --- */}
                 <label className="flex items-center cursor-pointer" title="Include Open Tickets & Related History">
-                  <input 
-                    type="checkbox" 
-                    checked={uiShowContext} 
-                    onChange={(e) => setUiShowContext(e.target.checked)} 
-                    className="w-5 h-5 accent-blue-600 cursor-pointer"
-                  />
-                  <span className="ml-2 text-xs font-bold text-blue-700 whitespace-nowrap">
-                    Show Open
-                  </span>
+                  <input type="checkbox" checked={uiShowContext} onChange={(e) => setUiShowContext(e.target.checked)} className="w-5 h-5 accent-blue-600 cursor-pointer"/>
+                  <span className="ml-2 text-xs font-bold text-blue-700 whitespace-nowrap">Show Open</span>
                 </label>
               </div>
             </div>
@@ -226,12 +242,21 @@ export default function HistoryPage() {
 
         {/* Results */}
         <div className="space-y-3">
-          {filteredLogs.map((log) => (
-            <div key={log.id} className="bg-white p-4 rounded shadow border-l-4 border-gray-400 relative">
+          {organizedLogs.map((log) => (
+            <div 
+              key={log.id} 
+              className={`bg-white p-4 rounded shadow border-l-4 border-gray-400 relative 
+                ${log.isChild ? 'ml-12 border-l-8 border-l-gray-300 bg-gray-50' : ''}`} /* INDENTATION LOGIC */
+            >
               
+              {/* VISUAL CONNECTOR FOR CHILDREN */}
+              {log.isChild && (
+                <div className="absolute -left-6 top-6 w-6 h-8 border-b-2 border-l-2 border-gray-300 rounded-bl-lg"></div>
+              )}
+
               {editingId === log.id ? (
                 // --- EDIT MODE ---
-                <div className="flex flex-col gap-3 bg-blue-50 p-2 rounded">
+                <div className="flex flex-col gap-3 p-2 rounded">
                    <div className="flex gap-4">
                     <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={editIsWork} onChange={(e) => setEditIsWork(e.target.checked)} className="accent-blue-600"/><span className="text-sm text-black">Work</span></label>
                     <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={editIsHome} onChange={(e) => setEditIsHome(e.target.checked)} className="accent-green-600"/><span className="text-sm text-black">Home</span></label>
@@ -266,7 +291,7 @@ export default function HistoryPage() {
                       
                       <span className="text-xs text-gray-400 font-mono mr-1">
                         {log.customId ? `#${log.customId}` : ''} 
-                        {log.taskRef ? `(Ref: #${log.taskRef})` : ''} 
+                        {log.taskRef && !log.isChild ? `(Ref: #${log.taskRef})` : ''} 
                         {' '}{log.dateString} {log.timestamp.split('T')[1]}
                       </span>
 
@@ -303,7 +328,7 @@ export default function HistoryPage() {
               )}
             </div>
           ))}
-          {filteredLogs.length === 0 && <p className="text-center text-gray-500 mt-8">No entries found.</p>}
+          {organizedLogs.length === 0 && <p className="text-center text-gray-500 mt-8">No entries found.</p>}
         </div>
 
         {expandedImage && (
