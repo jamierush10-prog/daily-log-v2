@@ -7,15 +7,15 @@ import Link from 'next/link';
 export default function HistoryPage() {
   const [logs, setLogs] = useState([]);
   
-  // --- UI STATE (What you are typing/selecting) ---
+  // --- UI STATE ---
   const [searchText, setSearchText] = useState(''); 
   const [uiCategory, setUiCategory] = useState('All'); 
-  const [uiStartDate, setUiStartDate] = useState('');
+  const [uiDate, setUiDate] = useState(''); // Renamed for clarity
 
-  // --- ACTIVE FILTERS (What actually filters the list) ---
+  // --- ACTIVE FILTERS ---
   const [activeSearch, setActiveSearch] = useState(''); 
   const [activeCategory, setActiveCategory] = useState('All');
-  const [activeStartDate, setActiveStartDate] = useState('');
+  const [activeDate, setActiveDate] = useState('');
 
   // Editing State
   const [editingId, setEditingId] = useState(null);
@@ -27,7 +27,7 @@ export default function HistoryPage() {
   const [editIsWork, setEditIsWork] = useState(false);
   const [editIsHome, setEditIsHome] = useState(false);
 
-  // 1. Fetch ALL logs (Live Feed)
+  // 1. Fetch ALL logs
   useEffect(() => {
     const q = query(collection(db, "logs"), orderBy("timestamp", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -40,7 +40,7 @@ export default function HistoryPage() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Filter Logic (Uses ACTIVE variables only)
+  // 2. Filter Logic (EXACT DATE MATCH)
   const filteredLogs = logs.filter(log => {
     // A. Text Search
     const term = activeSearch.toLowerCase();
@@ -56,9 +56,11 @@ export default function HistoryPage() {
       matchesCategory = (log.categories && log.categories.includes('Home')) || log.category === 'Home' || log.category === 'Both';
     }
 
-    // C. Date Filter (From Date)
+    // C. Date Filter (EXACT MATCH)
     let matchesDate = true;
-    if (activeStartDate) matchesDate = matchesDate && (log.dateString >= activeStartDate);
+    if (activeDate) {
+      matchesDate = (log.dateString === activeDate);
+    }
 
     return matchesSearch && matchesCategory && matchesDate;
   });
@@ -70,7 +72,7 @@ export default function HistoryPage() {
 
   const handleFilterClick = () => {
     setActiveCategory(uiCategory);
-    setActiveStartDate(uiStartDate);
+    setActiveDate(uiDate);
   };
 
   // --- ACTIONS (Delete/Edit) ---
@@ -189,11 +191,11 @@ export default function HistoryPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">From Date</label>
+              <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Date</label>
               <input 
                 type="date" 
-                value={uiStartDate}
-                onChange={(e) => setUiStartDate(e.target.value)}
+                value={uiDate}
+                onChange={(e) => setUiDate(e.target.value)}
                 className="w-full p-2 border border-gray-300 rounded text-black"
               />
             </div>
