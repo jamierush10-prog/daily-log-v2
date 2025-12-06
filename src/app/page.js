@@ -5,19 +5,33 @@ import { collection, addDoc, query, orderBy, onSnapshot, limit, where, getDocs }
 
 export default function Home() {
   const [type, setType] = useState('Do');
-  const [category, setCategory] = useState('Work'); // Default to Work
+  
+  // Changed to independent booleans for checkboxes
+  const [isWork, setIsWork] = useState(true);
+  const [isHome, setIsHome] = useState(false);
+
   const [entry, setEntry] = useState('');
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [status, setStatus] = useState('');
   const [logs, setLogs] = useState([]);
 
-  // 1. Set Default Date/Time
+  // 1. Set Default Date/Time (Fixed to use LOCAL time, not UTC)
   useEffect(() => {
     const now = new Date();
-    setDate(now.toISOString().split('T')[0]);
-    const timeString = now.toTimeString().split(' ')[0].substring(0, 5);
-    setTime(timeString);
+    
+    // Manual formatting to ensure we get local Alabama time, not UTC
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const localDate = `${year}-${month}-${day}`;
+    
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const localTime = `${hours}:${minutes}`;
+
+    setDate(localDate);
+    setTime(localTime);
   }, []);
 
   // 2. Live Feed Subscription
@@ -33,14 +47,25 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
-  // 3. Submit Handler (Now includes Category)
+  // 3. Submit Handler
   const handleSubmit = async () => {
     if (!entry) return; 
+    
+    // Build the category list based on checkboxes
+    const activeCategories = [];
+    if (isWork) activeCategories.push('Work');
+    if (isHome) activeCategories.push('Home');
+
+    if (activeCategories.length === 0) {
+      alert("Please select at least one category (Work or Home)");
+      return;
+    }
+
     setStatus('Saving...');
     try {
       await addDoc(collection(db, "logs"), {
         type: type,
-        category: category, // Save the new field
+        categories: activeCategories, // Save as a list: ['Work', 'Home']
         entry: entry,
         timestamp: `${date}T${time}`,
         dateString: date,
@@ -55,11 +80,10 @@ export default function Home() {
     }
   };
 
-  // 4. AI Report Generator (Now splits Work vs Home)
+  // 4. AI Report Generator
   const generateReport = async () => {
     setStatus('Generating...');
     
-    // Get logs for the date
     const q = query(collection(db, "logs"), where("dateString", "==", date));
     const querySnapshot = await getDocs(q);
     const dayLogs = querySnapshot.docs.map(doc => doc.data());
@@ -70,14 +94,20 @@ export default function Home() {
       return;
     }
 
-    // Filter logs into two lists ("Both" goes into both lists)
-    const workLogs = dayLogs.filter(l => l.category === 'Work' || l.category === 'Both');
-    const homeLogs = dayLogs.filter(l => l.category === 'Home' || l.category === 'Both');
+    // Filter Logic: Check if the log includes the category
+    // (We also check 'l.category' to support your older log entries)
+    const workLogs = dayLogs.filter(l => 
+      (l.categories && l.categories.includes('Work')) || 
+      l.category === 'Work' || l.category === 'Both'
+    );
+    
+    const homeLogs = dayLogs.filter(l => 
+      (l.categories && l.categories.includes('Home')) || 
+      l.category === 'Home' || l.category === 'Both'
+    );
 
-    // Helper to format text
     const formatLogs = (list) => list.map(l => `[${l.timestamp.split('T')[1]}] [${l.type}] ${l.entry}`).join('\n');
 
-    // Create the Split AI Prompt
     const prompt = `Act as my Executive Officer. Here are my logs for ${date}.
 Please generate TWO SEPARATE REPORTS based on the data below.
 
@@ -102,14 +132,12 @@ REQUIREMENTS:
 2. Home Plan of the Day (POD).
 `;
 
-    // Copy to Clipboard
     navigator.clipboard.writeText(prompt);
-    alert("Briefing copied to clipboard! Paste it into your AI.");
+    alert("Briefing copied to clipboard!");
     setStatus('Copied!');
     setTimeout(() => setStatus(''), 2000);
   };
 
-  // Helper for colors
   const getBadgeColor = (type) => {
     switch(type) {
       case 'Do': return 'bg-blue-100 text-blue-800';
@@ -119,49 +147,41 @@ REQUIREMENTS:
     }
   };
 
+  // Helper to display categories in the history list
+  const displayCats = (log) => {
+    if (log.categories) return log.categories.join(' & '); // New format
+    return log.category || 'Work'; // Old format fallback
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 p-4 flex flex-col items-center">
       <div className="bg-white p-8 rounded-lg shadow-lg w-full max-w-md mb-8">
         
         <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">Log Entry</h2>
 
-        {/* --- NEW: CATEGORY RADIO BUTTONS --- */}
-        <div className="flex justify-center gap-6 mb-6 p-2 bg-gray-50 rounded-lg border border-gray-200">
-          <label className="flex items-center gap-2 cursor-pointer">
+        {/* --- CHECKBOXES FOR CATEGORIES --- */}
+        <div className="flex justify-center gap-8 mb-6 p-3 bg-gray-50 rounded-lg border border-gray-200">
+          
+          <label className="flex items-center gap-3 cursor-pointer select-none">
             <input 
-              type="radio" 
-              name="cat" 
-              value="Work" 
-              checked={category === 'Work'} 
-              onChange={(e) => setCategory(e.target.value)}
-              className="w-5 h-5 accent-blue-600"
+              type="checkbox" 
+              checked={isWork}
+              onChange={(e) => setIsWork(e.target.checked)}
+              className="w-6 h-6 accent-blue-600 rounded"
             />
-            <span className="font-bold text-gray-700">Work</span>
+            <span className="font-bold text-gray-700 text-lg">Work</span>
           </label>
 
-          <label className="flex items-center gap-2 cursor-pointer">
+          <label className="flex items-center gap-3 cursor-pointer select-none">
             <input 
-              type="radio" 
-              name="cat" 
-              value="Home" 
-              checked={category === 'Home'} 
-              onChange={(e) => setCategory(e.target.value)}
-              className="w-5 h-5 accent-green-600"
+              type="checkbox" 
+              checked={isHome}
+              onChange={(e) => setIsHome(e.target.checked)}
+              className="w-6 h-6 accent-green-600 rounded"
             />
-            <span className="font-bold text-gray-700">Home</span>
+            <span className="font-bold text-gray-700 text-lg">Home</span>
           </label>
 
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input 
-              type="radio" 
-              name="cat" 
-              value="Both" 
-              checked={category === 'Both'} 
-              onChange={(e) => setCategory(e.target.value)}
-              className="w-5 h-5 accent-purple-600"
-            />
-            <span className="font-bold text-gray-700">Both</span>
-          </label>
         </div>
 
         {/* Inputs */}
@@ -210,11 +230,8 @@ REQUIREMENTS:
               <div className="flex justify-between items-center mb-2">
                 <div className="flex gap-2">
                   {/* Category Badge */}
-                  <span className={`text-xs font-bold px-2 py-1 rounded border 
-                    ${log.category === 'Work' ? 'bg-blue-50 text-blue-800 border-blue-200' : 
-                      log.category === 'Home' ? 'bg-green-50 text-green-800 border-green-200' : 
-                      'bg-purple-50 text-purple-800 border-purple-200'}`}>
-                    {log.category || 'Work'}
+                  <span className="text-xs font-bold px-2 py-1 rounded border bg-gray-50 text-gray-600 border-gray-200">
+                    {displayCats(log)}
                   </span>
                   {/* Type Badge */}
                   <span className={`text-xs font-bold px-2 py-1 rounded ${getBadgeColor(log.type)}`}>{log.type}</span>
