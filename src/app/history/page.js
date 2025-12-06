@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { db } from '../../lib/firebase'; // Note the double ../ to go up two levels
+import { db } from '../../lib/firebase';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import Link from 'next/link';
 
@@ -8,7 +8,9 @@ export default function HistoryPage() {
   const [logs, setLogs] = useState([]);
   
   // Filters
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchText, setSearchText] = useState(''); // What you type
+  const [activeSearch, setActiveSearch] = useState(''); // What filters the list (after clicking button)
+  
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -24,7 +26,6 @@ export default function HistoryPage() {
 
   // 1. Fetch ALL logs (Live Feed)
   useEffect(() => {
-    // We fetch everything and filter in the browser for speed
     const q = query(collection(db, "logs"), orderBy("timestamp", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const logsData = snapshot.docs.map(doc => ({
@@ -36,10 +37,10 @@ export default function HistoryPage() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Filter Logic
+  // 2. Filter Logic (Uses activeSearch, not searchText)
   const filteredLogs = logs.filter(log => {
-    // A. Text Search
-    const matchesSearch = log.entry.toLowerCase().includes(searchTerm.toLowerCase());
+    // A. Text Search (Check if entry includes the ACTIVE search term)
+    const matchesSearch = log.entry.toLowerCase().includes(activeSearch.toLowerCase());
     
     // B. Category Filter
     let matchesCategory = true;
@@ -56,6 +57,11 @@ export default function HistoryPage() {
 
     return matchesSearch && matchesCategory && matchesDate;
   });
+
+  // Helper to trigger search
+  const handleSearchClick = () => {
+    setActiveSearch(searchText);
+  };
 
   // --- ACTIONS (Delete/Edit) ---
   const handleDelete = async (id) => {
@@ -126,16 +132,25 @@ export default function HistoryPage() {
         {/* --- FILTERS CARD --- */}
         <div className="bg-white p-6 rounded-lg shadow mb-6">
           
-          {/* Search Bar */}
+          {/* Search Bar with Button */}
           <div className="mb-4">
             <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Search</label>
-            <input 
-              type="text" 
-              placeholder="Search entries..." 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full p-3 border border-gray-300 rounded text-black"
-            />
+            <div className="flex gap-2">
+              <input 
+                type="text" 
+                placeholder="Type keywords..." 
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearchClick()} // Allow Enter key
+                className="flex-1 p-3 border border-gray-300 rounded text-black"
+              />
+              <button 
+                onClick={handleSearchClick}
+                className="bg-blue-600 text-white px-6 py-2 rounded font-bold hover:bg-blue-700"
+              >
+                Search
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -175,8 +190,8 @@ export default function HistoryPage() {
                 // EDIT MODE
                 <div className="flex flex-col gap-3 bg-blue-50 p-2 rounded">
                    <div className="flex gap-4">
-                    <label className="flex items-center gap-2"><input type="checkbox" checked={editIsWork} onChange={(e) => setEditIsWork(e.target.checked)} className="accent-blue-600"/><span className="text-sm text-black">Work</span></label>
-                    <label className="flex items-center gap-2"><input type="checkbox" checked={editIsHome} onChange={(e) => setEditIsHome(e.target.checked)} className="accent-green-600"/><span className="text-sm text-black">Home</span></label>
+                    <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={editIsWork} onChange={(e) => setEditIsWork(e.target.checked)} className="accent-blue-600"/><span className="text-sm text-black">Work</span></label>
+                    <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={editIsHome} onChange={(e) => setEditIsHome(e.target.checked)} className="accent-green-600"/><span className="text-sm text-black">Home</span></label>
                   </div>
                   <div className="flex gap-2">
                     <select value={editType} onChange={(e) => setEditType(e.target.value)} className="p-1 border rounded text-black text-sm">
