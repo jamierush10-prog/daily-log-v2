@@ -7,13 +7,13 @@ import Link from 'next/link';
 export default function HistoryPage() {
   const [logs, setLogs] = useState([]);
   
-  // Filters
+  // --- UI STATE ---
   const [searchText, setSearchText] = useState(''); 
   const [uiCategory, setUiCategory] = useState('All'); 
   const [uiDate, setUiDate] = useState('');
   const [uiShowContext, setUiShowContext] = useState(false);
 
-  // Active Filters
+  // --- ACTIVE FILTERS ---
   const [activeSearch, setActiveSearch] = useState(''); 
   const [activeCategory, setActiveCategory] = useState('All');
   const [activeDate, setActiveDate] = useState('');
@@ -61,67 +61,92 @@ export default function HistoryPage() {
       matchesCategory = (log.categories && log.categories.includes('Home')) || log.category === 'Home' || log.category === 'Both';
     }
 
-    // C. Date & Context Logic (The Important Part)
-    
-    // 1. Was it created on the filter date?
+    // C. Date & Context Logic
     const createdOnDate = activeDate ? (log.dateString === activeDate) : true;
-    
-    // 2. Was it CLOSED on the filter date? (NEW LOGIC)
     const closedOnDate = activeDate ? (log.closedDate === activeDate) : false;
 
-    const openTicketIds = new Set(logs.filter(l => l.type === 'Open' && l.customId).map(l => l.customId.toString()));
+    // We consider a ticket "Relevant" if it is Open OR if it was Closed/Created on the specific filter date
+    // We need this list to decide which "children" to pull in for context
+    const relevantParentIds = new Set(logs.filter(l => {
+        // Is it a ticket?
+        if (!l.customId) return false;
+        // Is it Open?
+        if (l.type === 'Open') return true;
+        // Is it a Closed ticket relevant to this date?
+        if (l.type === 'Closed' && (l.dateString === activeDate || l.closedDate === activeDate)) return true;
+        return false;
+    }).map(l => l.customId.toString()));
 
-    // Rule Set:
     if (activeShowContext) {
       if (createdOnDate) return true;
-      if (closedOnDate) return true; // Include if closed today!
-      if (log.type === 'Open') return true; // Include if currently Open
-      if (log.type === 'Done' && log.taskRef && openTicketIds.has(log.taskRef.toString())) return true; // Include if child of Open
+      if (closedOnDate) return true; 
+      if (log.type === 'Open') return true; 
+      // Include child if its Parent is currently considered relevant
+      if (log.type === 'Done' && log.taskRef && relevantParentIds.has(log.taskRef.toString())) return true; 
       return false;
     }
 
-    // Default View (No Context toggle)
     return matchesSearch && matchesCategory && (createdOnDate || closedOnDate);
   });
 
-  // --- 2. GROUPING ---
+  // --- 2. GROUPING (Updated to Thread Closed Tickets) ---
   const organizedLogs = (() => {
     const openTickets = [];
-    const childMap = {};
+    const closedTickets = []; // NEW: Bucket for Closed
+    const childMap = {}; // Maps Ticket ID -> Array of Children
     const looseLogs = [];
 
+    // First Pass: Identify PARENTS (Open OR Closed)
     filteredLogs.forEach(log => {
-      if (log.type === 'Open' && log.customId) {
-        openTickets.push(log);
-        childMap[log.customId] = [];
+      // If it has a customId, it is a Parent (Ticket)
+      if (log.customId && (log.type === 'Open' || log.type === 'Closed')) {
+        if (log.type === 'Open') {
+            openTickets.push(log);
+        } else {
+            closedTickets.push(log);
+        }
+        childMap[log.customId] = []; // Initialize bucket for children
       } else {
         looseLogs.push(log);
       }
     });
 
+    // Second Pass: Attach Children to Parents
     const trulyLooseLogs = [];
     looseLogs.forEach(log => {
+      // If it is a "Done" task AND points to a Parent we found above...
       if (log.type === 'Done' && log.taskRef && childMap[log.taskRef]) {
+        // Add to the parent's bucket
         childMap[log.taskRef].push({ ...log, isChild: true });
       } else {
         trulyLooseLogs.push(log);
       }
     });
 
+    // Third Pass: Build Final Order
     const finalOrder = [];
-    openTickets.forEach(ticket => {
-      finalOrder.push(ticket);
-      const children = childMap[ticket.customId].sort((a,b) => b.timestamp.localeCompare(a.timestamp));
-      finalOrder.push(...children);
-    });
+
+    // Helper to add a Ticket + its Children
+    const addTicketWithChildren = (ticket) => {
+        finalOrder.push(ticket);
+        const children = childMap[ticket.customId].sort((a,b) => b.timestamp.localeCompare(a.timestamp));
+        finalOrder.push(...children);
+    };
+
+    // 1. Open Tickets first (Priority)
+    openTickets.forEach(addTicketWithChildren);
+
+    // 2. Closed Tickets next (History)
+    closedTickets.forEach(addTicketWithChildren);
+
+    // 3. Loose logs last
     finalOrder.push(...trulyLooseLogs);
 
     return finalOrder;
   })();
 
-  // --- 3. MARK AS CLOSED (Updated to save Date) ---
+  // --- 3. ACTIONS ---
   const markAsClosed = async (id) => {
-    // Get local date string YYYY-MM-DD
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -131,11 +156,10 @@ export default function HistoryPage() {
     const logRef = doc(db, "logs", id);
     await updateDoc(logRef, { 
       type: 'Closed',
-      closedDate: todayString // SAVE THE DATE
+      closedDate: todayString
     });
   };
 
-  // --- 4. GENERATE BRIEF ---
   const generateBrief = () => {
     if (organizedLogs.length === 0) {
       alert("No logs visible to report on.");
@@ -146,12 +170,8 @@ export default function HistoryPage() {
     const logText = organizedLogs.map(log => {
       const time = log.timestamp.split('T')[1];
       const cats = log.categories ? log.categories.join('/') : 'General';
-      
-      // Smart Type Labeling for AI
       let typeLabel = log.type;
-      if (log.type === 'Closed' && log.closedDate === activeDate) {
-        typeLabel = 'COMPLETED TODAY'; // Tell AI this was finished today
-      }
+      if (log.type === 'Closed' && log.closedDate === activeDate) typeLabel = 'COMPLETED TODAY';
 
       const refInfo = log.customId ? `[TICKET #${log.customId}]` : (log.taskRef ? `[REF #${log.taskRef}]` : '');
       const subject = log.subject ? ` - SUBJECT: ${log.subject}` : '';
@@ -160,16 +180,15 @@ export default function HistoryPage() {
       return `${indent}[${log.dateString} ${time}] [${cats}] [${typeLabel}] ${refInfo}${subject}: ${log.entry}`;
     }).join('\n');
 
-    const prompt = `Act as my Executive Officer. Review the following filtered log entries.
-These are the specific items I am currently reviewing for date: ${activeDate || 'All Time'}.
+    const prompt = `Act as my Executive Officer. Review these logs (${activeDate || 'All Time'}).
 
 LOG DATA:
 ${logText}
 
 REQUIREMENTS:
-1. Identify any items marked [COMPLETED TODAY] and list them as Accomplishments.
-2. Review items marked [Open] and prioritize them for the Plan of the Day.
-3. Summarize any [Done] tasks or [Note] entries.
+1. List [COMPLETED TODAY] items as Accomplishments.
+2. Prioritize [Open] items for the Plan of the Day.
+3. Summarize [Done] tasks.
 `;
 
     navigator.clipboard.writeText(prompt);
@@ -177,7 +196,7 @@ REQUIREMENTS:
     setTimeout(() => setStatus(''), 2000);
   };
 
-  // Handlers & Helpers
+  // Handlers
   const handleSearchClick = () => setActiveSearch(searchText);
   const handleFilterClick = () => { 
     setActiveCategory(uiCategory); 
@@ -231,11 +250,9 @@ REQUIREMENTS:
   };
 
   const getBadgeColor = (type, closedDate) => {
-    // Highlight items closed TODAY
     if (type === 'Closed' && activeDate && closedDate === activeDate) {
-      return 'bg-green-600 text-white border border-green-700 shadow-sm'; // Bright Green for fresh closes
+      return 'bg-green-600 text-white border border-green-700 shadow-sm';
     }
-
     switch(type) {
       case 'Open':    return 'bg-blue-100 text-blue-800 border border-blue-200';
       case 'Done':    return 'bg-green-100 text-green-800 border border-green-200'; 
@@ -280,15 +297,13 @@ REQUIREMENTS:
                 <option value="Home">Home Only</option>
               </select>
             </div>
-            
             <div>
               <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Date</label>
               <div className="flex items-center gap-2">
                 <input type="date" value={uiDate} onChange={(e) => setUiDate(e.target.value)} className="w-full p-2 border border-gray-300 rounded text-black"/>
-                
-                <label className="flex items-center cursor-pointer" title="Include Open Tickets & Related History">
+                <label className="flex items-center cursor-pointer" title="Include Ticket History">
                   <input type="checkbox" checked={uiShowContext} onChange={(e) => setUiShowContext(e.target.checked)} className="w-5 h-5 accent-blue-600 cursor-pointer"/>
-                  <span className="ml-2 text-xs font-bold text-blue-700 whitespace-nowrap">Show Open</span>
+                  <span className="ml-2 text-xs font-bold text-blue-700 whitespace-nowrap">Show Context</span>
                 </label>
               </div>
             </div>
@@ -308,7 +323,7 @@ REQUIREMENTS:
               {log.isChild && <div className="absolute -left-6 top-6 w-6 h-8 border-b-2 border-l-2 border-gray-300 rounded-bl-lg"></div>}
 
               {editingId === log.id ? (
-                // Edit Mode
+                // --- EDIT MODE ---
                 <div className="flex flex-col gap-3 p-2 rounded">
                    <div className="flex gap-4">
                     <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={editIsWork} onChange={(e) => setEditIsWork(e.target.checked)} className="accent-blue-600"/><span className="text-sm text-black">Work</span></label>
@@ -330,7 +345,7 @@ REQUIREMENTS:
                   </div>
                 </div>
               ) : (
-                // View Mode
+                // --- VIEW MODE ---
                 <>
                   <div className="flex justify-between items-center mb-2">
                     <div className="flex gap-2 items-center">
