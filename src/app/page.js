@@ -16,11 +16,11 @@ export default function Home() {
   const [time, setTime] = useState('');
   const [status, setStatus] = useState('');
   
-  // NEW: Task Reference
+  // Task Reference
   const [taskNumber, setTaskNumber] = useState('');
   
-  // NEW: Multi-File State
-  const [files, setFiles] = useState([]);
+  // --- MULTI-FILE STATE ---
+  const [files, setFiles] = useState([]); // Stores the actual File objects
 
   useEffect(() => {
     const initDateTime = () => {
@@ -36,14 +36,28 @@ export default function Home() {
     initDateTime();
   }, []);
 
-  // Handle File Selection (Max 5)
+  // --- FILE HANDLERS ---
+  
+  // 1. ADD Files (Don't replace)
   const handleFileChange = (e) => {
     const selected = Array.from(e.target.files);
-    if (selected.length > 5) {
-      alert("Maximum 5 files allowed.");
+    
+    // Check limit
+    if (files.length + selected.length > 5) {
+      alert("Maximum 5 files allowed total.");
       return;
     }
-    setFiles(selected);
+
+    // Add new files to existing list
+    setFiles(prevFiles => [...prevFiles, ...selected]);
+    
+    // Reset the input so you can select the same file again if needed
+    e.target.value = null; 
+  };
+
+  // 2. REMOVE File
+  const removeFile = (indexToRemove) => {
+    setFiles(prevFiles => prevFiles.filter((_, index) => index !== indexToRemove));
   };
 
   const handleSubmit = async () => {
@@ -61,24 +75,22 @@ export default function Home() {
     setStatus('Saving...');
 
     try {
-      // 1. Upload ALL Files
+      // 1. Upload Files from the State Array
       const uploadedAttachments = [];
       
       if (files.length > 0) {
         setStatus(`Uploading ${files.length} files...`);
         
-        // Loop through files and upload
         await Promise.all(files.map(async (file) => {
           const uniqueName = `${Date.now()}-${file.name}`;
           const storageRef = ref(storage, `uploads/${uniqueName}`);
           await uploadBytes(storageRef, file);
           const url = await getDownloadURL(storageRef);
           
-          // Save metadata
           uploadedAttachments.push({
             name: file.name,
             url: url,
-            type: file.type // 'image/png' or 'application/pdf' etc
+            type: file.type 
           });
         }));
       }
@@ -103,7 +115,7 @@ export default function Home() {
         categories: activeCategories,
         subject: subject,
         entry: entry,
-        attachments: uploadedAttachments, // NEW: Array of files
+        attachments: uploadedAttachments, 
         customId: newCustomId, 
         taskRef: (type === 'Done' && taskNumber) ? taskNumber : null,
         timestamp: `${date}T${time}`,
@@ -115,7 +127,7 @@ export default function Home() {
       setEntry(''); 
       setSubject('');
       setTaskNumber('');
-      setFiles([]); // Clear files
+      setFiles([]); // Clear the file list
       setTimeout(() => setStatus(''), 2000);
     } catch (e) {
       console.error("Error: ", e);
@@ -184,27 +196,40 @@ export default function Home() {
           <textarea value={entry} onChange={(e) => setEntry(e.target.value)} className="w-full p-3 border border-gray-300 rounded h-32 text-black bg-gray-50" placeholder="Log details..."></textarea>
         </div>
 
-        {/* --- MULTI-FILE UPLOAD --- */}
+        {/* --- ACCUMULATIVE FILE UPLOAD --- */}
         <div className="mb-6">
           <label className="block text-sm font-bold text-gray-700 mb-1">Attachments (Max 5)</label>
-          <p className="text-xs text-gray-500 mb-2">Supported: Images, PDF, Word, Excel, Outlook (.msg)</p>
-          <input 
-            type="file" 
-            multiple
-            // Allow images and common document types
-            accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.msg,.eml"
-            onChange={handleFileChange}
-            className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-          />
-          {/* File List Preview */}
+          <p className="text-xs text-gray-500 mb-2">Supported: Images, PDF, Word, Excel, Outlook</p>
+          
+          <div className="flex items-center gap-2 mb-3">
+            <label className="cursor-pointer bg-blue-100 text-blue-700 px-4 py-2 rounded-lg font-bold hover:bg-blue-200 transition text-sm">
+              + Add Files
+              <input 
+                type="file" 
+                multiple
+                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.msg,.eml"
+                onChange={handleFileChange}
+                className="hidden" // Hides the ugly default input
+              />
+            </label>
+            <span className="text-xs text-gray-500">{files.length}/5 selected</span>
+          </div>
+
+          {/* --- SELECTED FILES LIST --- */}
           {files.length > 0 && (
-            <div className="mt-2 text-sm text-gray-600">
-              <span className="font-bold">Selected:</span>
-              <ul className="list-disc pl-5">
-                {Array.from(files).map((f, i) => (
-                  <li key={i}>{f.name}</li>
-                ))}
-              </ul>
+            <div className="space-y-2">
+              {files.map((file, index) => (
+                <div key={index} className="flex justify-between items-center bg-gray-50 p-2 rounded border border-gray-200">
+                  <span className="text-sm text-gray-700 truncate mr-2">📄 {file.name}</span>
+                  <button 
+                    onClick={() => removeFile(index)}
+                    className="text-red-500 hover:text-red-700 font-bold px-2 py-1 rounded hover:bg-red-50 transition"
+                    title="Remove file"
+                  >
+                    X
+                  </button>
+                </div>
+              ))}
             </div>
           )}
         </div>
