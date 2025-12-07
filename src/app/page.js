@@ -16,11 +16,11 @@ export default function Home() {
   const [time, setTime] = useState('');
   const [status, setStatus] = useState('');
   
-  // NEW: Task Reference State
+  // NEW: Task Reference
   const [taskNumber, setTaskNumber] = useState('');
   
-  // Image State
-  const [imageFile, setImageFile] = useState(null);
+  // NEW: Multi-File State
+  const [files, setFiles] = useState([]);
 
   useEffect(() => {
     const initDateTime = () => {
@@ -28,17 +28,23 @@ export default function Home() {
       const year = now.getFullYear();
       const month = String(now.getMonth() + 1).padStart(2, '0');
       const day = String(now.getDate()).padStart(2, '0');
-      const localDate = `${year}-${month}-${day}`;
-      
+      setDate(`${year}-${month}-${day}`);
       const hours = String(now.getHours()).padStart(2, '0');
       const minutes = String(now.getMinutes()).padStart(2, '0');
-      const localTime = `${hours}:${minutes}`;
-
-      setDate(localDate);
-      setTime(localTime);
+      setTime(`${hours}:${minutes}`);
     };
     initDateTime();
   }, []);
+
+  // Handle File Selection (Max 5)
+  const handleFileChange = (e) => {
+    const selected = Array.from(e.target.files);
+    if (selected.length > 5) {
+      alert("Maximum 5 files allowed.");
+      return;
+    }
+    setFiles(selected);
+  };
 
   const handleSubmit = async () => {
     if (!entry) return; 
@@ -55,17 +61,29 @@ export default function Home() {
     setStatus('Saving...');
 
     try {
-      let imageUrl = null;
-
-      if (imageFile) {
-        setStatus('Uploading Image...');
-        const uniqueName = `${Date.now()}-${imageFile.name}`;
-        const storageRef = ref(storage, `uploads/${uniqueName}`);
-        await uploadBytes(storageRef, imageFile);
-        imageUrl = await getDownloadURL(storageRef);
+      // 1. Upload ALL Files
+      const uploadedAttachments = [];
+      
+      if (files.length > 0) {
+        setStatus(`Uploading ${files.length} files...`);
+        
+        // Loop through files and upload
+        await Promise.all(files.map(async (file) => {
+          const uniqueName = `${Date.now()}-${file.name}`;
+          const storageRef = ref(storage, `uploads/${uniqueName}`);
+          await uploadBytes(storageRef, file);
+          const url = await getDownloadURL(storageRef);
+          
+          // Save metadata
+          uploadedAttachments.push({
+            name: file.name,
+            url: url,
+            type: file.type // 'image/png' or 'application/pdf' etc
+          });
+        }));
       }
 
-      // Auto-Increment for OPEN tickets
+      // 2. Auto-Increment Logic
       let newCustomId = null;
       if (type === 'Open') {
         const q = query(collection(db, "logs"), orderBy("customId", "desc"), limit(1));
@@ -78,16 +96,16 @@ export default function Home() {
         }
       }
 
-      // Save Log
+      // 3. Save Log
       setStatus('Saving Log...');
       await addDoc(collection(db, "logs"), {
         type: type,
         categories: activeCategories,
         subject: subject,
         entry: entry,
-        imageUrl: imageUrl,
+        attachments: uploadedAttachments, // NEW: Array of files
         customId: newCustomId, 
-        taskRef: (type === 'Done' && taskNumber) ? taskNumber : null, // Save Reference only if Done
+        taskRef: (type === 'Done' && taskNumber) ? taskNumber : null,
         timestamp: `${date}T${time}`,
         dateString: date,
         createdAt: new Date()
@@ -96,8 +114,8 @@ export default function Home() {
       setStatus('Saved!');
       setEntry(''); 
       setSubject('');
-      setTaskNumber(''); // Clear task number
-      setImageFile(null);
+      setTaskNumber('');
+      setFiles([]); // Clear files
       setTimeout(() => setStatus(''), 2000);
     } catch (e) {
       console.error("Error: ", e);
@@ -134,17 +152,11 @@ export default function Home() {
           </select>
         </div>
 
-        {/* --- CONDITIONAL TASK # FIELD --- */}
+        {/* Conditional Task # */}
         {type === 'Done' && (
           <div className="mb-4 animate-fade-in">
             <label className="block text-sm font-bold text-gray-700 mb-1">Related Task # (Optional)</label>
-            <input 
-              type="number" 
-              value={taskNumber} 
-              onChange={(e) => setTaskNumber(e.target.value)} 
-              className="w-full p-3 border border-blue-300 rounded text-black bg-blue-50 font-mono" 
-              placeholder="e.g. 42"
-            />
+            <input type="number" value={taskNumber} onChange={(e) => setTaskNumber(e.target.value)} className="w-full p-3 border border-blue-300 rounded text-black bg-blue-50 font-mono" placeholder="e.g. 42"/>
           </div>
         )}
 
@@ -172,15 +184,29 @@ export default function Home() {
           <textarea value={entry} onChange={(e) => setEntry(e.target.value)} className="w-full p-3 border border-gray-300 rounded h-32 text-black bg-gray-50" placeholder="Log details..."></textarea>
         </div>
 
-        {/* Image Upload */}
+        {/* --- MULTI-FILE UPLOAD --- */}
         <div className="mb-6">
-          <label className="block text-sm font-bold text-gray-700 mb-1">Attach Photo (Optional)</label>
+          <label className="block text-sm font-bold text-gray-700 mb-1">Attachments (Max 5)</label>
+          <p className="text-xs text-gray-500 mb-2">Supported: Images, PDF, Word, Excel, Outlook (.msg)</p>
           <input 
             type="file" 
-            accept="image/*"
-            onChange={(e) => setImageFile(e.target.files[0])}
+            multiple
+            // Allow images and common document types
+            accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.msg,.eml"
+            onChange={handleFileChange}
             className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
           />
+          {/* File List Preview */}
+          {files.length > 0 && (
+            <div className="mt-2 text-sm text-gray-600">
+              <span className="font-bold">Selected:</span>
+              <ul className="list-disc pl-5">
+                {Array.from(files).map((f, i) => (
+                  <li key={i}>{f.name}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
         <button onClick={handleSubmit} className={`w-full py-4 rounded font-bold text-xl text-white transition-all shadow-md ${status === 'Saved!' ? 'bg-green-600' : 'bg-blue-600 hover:bg-blue-700'}`}>

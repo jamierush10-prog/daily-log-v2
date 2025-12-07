@@ -7,13 +7,13 @@ import Link from 'next/link';
 export default function HistoryPage() {
   const [logs, setLogs] = useState([]);
   
-  // --- UI STATE ---
+  // Filters
   const [searchText, setSearchText] = useState(''); 
   const [uiCategory, setUiCategory] = useState('All'); 
   const [uiDate, setUiDate] = useState('');
   const [uiShowContext, setUiShowContext] = useState(false);
 
-  // --- ACTIVE FILTERS ---
+  // Active Filters
   const [activeSearch, setActiveSearch] = useState(''); 
   const [activeCategory, setActiveCategory] = useState('All');
   const [activeDate, setActiveDate] = useState('');
@@ -45,15 +45,13 @@ export default function HistoryPage() {
     return () => unsubscribe();
   }, []);
 
-  // --- 1. FILTERING LOGIC ---
+  // --- FILTERING ---
   const filteredLogs = logs.filter(log => {
-    // A. Search Text
     const term = activeSearch.toLowerCase();
     const entryMatch = log.entry.toLowerCase().includes(term);
     const subjectMatch = log.subject ? log.subject.toLowerCase().includes(term) : false;
     const matchesSearch = entryMatch || subjectMatch;
     
-    // B. Category
     let matchesCategory = true;
     if (activeCategory === 'Work') {
       matchesCategory = (log.categories && log.categories.includes('Work')) || log.category === 'Work' || log.category === 'Both';
@@ -61,91 +59,64 @@ export default function HistoryPage() {
       matchesCategory = (log.categories && log.categories.includes('Home')) || log.category === 'Home' || log.category === 'Both';
     }
 
-    // C. Date & Context Logic
     const createdOnDate = activeDate ? (log.dateString === activeDate) : true;
     const closedOnDate = activeDate ? (log.closedDate === activeDate) : false;
-
-    // We consider a ticket "Relevant" if it is Open OR if it was Closed/Created on the specific filter date
-    // We need this list to decide which "children" to pull in for context
-    const relevantParentIds = new Set(logs.filter(l => {
-        // Is it a ticket?
-        if (!l.customId) return false;
-        // Is it Open?
-        if (l.type === 'Open') return true;
-        // Is it a Closed ticket relevant to this date?
-        if (l.type === 'Closed' && (l.dateString === activeDate || l.closedDate === activeDate)) return true;
-        return false;
-    }).map(l => l.customId.toString()));
+    const openTicketIds = new Set(logs.filter(l => l.type === 'Open' && l.customId).map(l => l.customId.toString()));
 
     if (activeShowContext) {
       if (createdOnDate) return true;
       if (closedOnDate) return true; 
       if (log.type === 'Open') return true; 
-      // Include child if its Parent is currently considered relevant
-      if (log.type === 'Done' && log.taskRef && relevantParentIds.has(log.taskRef.toString())) return true; 
+      if (log.type === 'Done' && log.taskRef && openTicketIds.has(log.taskRef.toString())) return true; 
       return false;
     }
 
     return matchesSearch && matchesCategory && (createdOnDate || closedOnDate);
   });
 
-  // --- 2. GROUPING (Updated to Thread Closed Tickets) ---
+  // --- GROUPING ---
   const organizedLogs = (() => {
     const openTickets = [];
-    const closedTickets = []; // NEW: Bucket for Closed
-    const childMap = {}; // Maps Ticket ID -> Array of Children
+    const closedTickets = [];
+    const childMap = {};
     const looseLogs = [];
 
-    // First Pass: Identify PARENTS (Open OR Closed)
     filteredLogs.forEach(log => {
-      // If it has a customId, it is a Parent (Ticket)
       if (log.customId && (log.type === 'Open' || log.type === 'Closed')) {
         if (log.type === 'Open') {
             openTickets.push(log);
         } else {
             closedTickets.push(log);
         }
-        childMap[log.customId] = []; // Initialize bucket for children
+        childMap[log.customId] = [];
       } else {
         looseLogs.push(log);
       }
     });
 
-    // Second Pass: Attach Children to Parents
     const trulyLooseLogs = [];
     looseLogs.forEach(log => {
-      // If it is a "Done" task AND points to a Parent we found above...
       if (log.type === 'Done' && log.taskRef && childMap[log.taskRef]) {
-        // Add to the parent's bucket
         childMap[log.taskRef].push({ ...log, isChild: true });
       } else {
         trulyLooseLogs.push(log);
       }
     });
 
-    // Third Pass: Build Final Order
     const finalOrder = [];
-
-    // Helper to add a Ticket + its Children
     const addTicketWithChildren = (ticket) => {
         finalOrder.push(ticket);
         const children = childMap[ticket.customId].sort((a,b) => b.timestamp.localeCompare(a.timestamp));
         finalOrder.push(...children);
     };
 
-    // 1. Open Tickets first (Priority)
     openTickets.forEach(addTicketWithChildren);
-
-    // 2. Closed Tickets next (History)
     closedTickets.forEach(addTicketWithChildren);
-
-    // 3. Loose logs last
     finalOrder.push(...trulyLooseLogs);
 
     return finalOrder;
   })();
 
-  // --- 3. ACTIONS ---
   const markAsClosed = async (id) => {
     const now = new Date();
     const year = now.getFullYear();
@@ -177,7 +148,10 @@ export default function HistoryPage() {
       const subject = log.subject ? ` - SUBJECT: ${log.subject}` : '';
       const indent = log.isChild ? "   >>> " : "";
       
-      return `${indent}[${log.dateString} ${time}] [${cats}] [${typeLabel}] ${refInfo}${subject}: ${log.entry}`;
+      // Add attachment info to AI
+      const attachInfo = (log.attachments?.length > 0) ? ` [${log.attachments.length} ATTACHMENTS]` : '';
+      
+      return `${indent}[${log.dateString} ${time}] [${cats}] [${typeLabel}] ${refInfo}${subject}${attachInfo}: ${log.entry}`;
     }).join('\n');
 
     const prompt = `Act as my Executive Officer. Review these logs (${activeDate || 'All Time'}).
@@ -367,12 +341,43 @@ REQUIREMENTS:
                   </div>
                   {log.subject && <h4 className="font-bold text-gray-900 mb-1">{log.subject}</h4>}
                   <p className="text-gray-800 whitespace-pre-wrap">{log.entry}</p>
-                  {log.imageUrl && (
+                  
+                  {/* --- NEW: MULTI-FILE DISPLAY --- */}
+                  {/* Backward Compatible for single ImageUrl */}
+                  {log.imageUrl && !log.attachments && (
                     <div className="mt-3">
-                      <p className="text-xs text-gray-400 mb-1">Attachment:</p>
                       <img src={log.imageUrl} alt="Log attachment" onClick={() => setExpandedImage(log.imageUrl)} className="w-20 h-20 object-cover rounded-lg border border-gray-300 cursor-pointer hover:opacity-80 transition" />
                     </div>
                   )}
+
+                  {/* New Array Attachments */}
+                  {log.attachments && log.attachments.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {log.attachments.map((file, idx) => {
+                        const isImage = file.type?.startsWith('image/');
+                        return isImage ? (
+                          <img 
+                            key={idx} 
+                            src={file.url} 
+                            alt={file.name} 
+                            onClick={() => setExpandedImage(file.url)} 
+                            className="w-20 h-20 object-cover rounded-lg border border-gray-300 cursor-pointer hover:opacity-80 transition"
+                          />
+                        ) : (
+                          <a 
+                            key={idx} 
+                            href={file.url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded border border-gray-300 text-xs text-blue-600 font-bold hover:bg-gray-200 transition"
+                          >
+                            📄 {file.name.substring(0, 15)}...
+                          </a>
+                        );
+                      })}
+                    </div>
+                  )}
+
                 </>
               )}
             </div>
