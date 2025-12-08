@@ -45,7 +45,6 @@ export default function HistoryPage() {
     return () => unsubscribe();
   }, []);
 
-  // --- FILTERING ---
   const filteredLogs = logs.filter(log => {
     const term = activeSearch.toLowerCase();
     const entryMatch = log.entry.toLowerCase().includes(term);
@@ -74,7 +73,6 @@ export default function HistoryPage() {
     return matchesSearch && matchesCategory && (createdOnDate || closedOnDate);
   });
 
-  // --- GROUPING ---
   const organizedLogs = (() => {
     const openTickets = [];
     const closedTickets = [];
@@ -83,11 +81,8 @@ export default function HistoryPage() {
 
     filteredLogs.forEach(log => {
       if (log.customId && (log.type === 'Open' || log.type === 'Closed')) {
-        if (log.type === 'Open') {
-            openTickets.push(log);
-        } else {
-            closedTickets.push(log);
-        }
+        if (log.type === 'Open') openTickets.push(log);
+        else closedTickets.push(log);
         childMap[log.customId] = [];
       } else {
         looseLogs.push(log);
@@ -125,10 +120,7 @@ export default function HistoryPage() {
     const todayString = `${year}-${month}-${day}`;
 
     const logRef = doc(db, "logs", id);
-    await updateDoc(logRef, { 
-      type: 'Closed',
-      closedDate: todayString
-    });
+    await updateDoc(logRef, { type: 'Closed', closedDate: todayString });
   };
 
   const generateBrief = () => {
@@ -148,8 +140,7 @@ export default function HistoryPage() {
       const subject = log.subject ? ` - SUBJECT: ${log.subject}` : '';
       const indent = log.isChild ? "   >>> " : "";
       
-      // Add attachment info to AI
-      const attachInfo = (log.attachments?.length > 0) ? ` [${log.attachments.length} ATTACHMENTS]` : '';
+      const attachInfo = (log.attachments?.length > 0) ? ` [${log.attachments.length} FILES]` : '';
       
       return `${indent}[${log.dateString} ${time}] [${cats}] [${typeLabel}] ${refInfo}${subject}${attachInfo}: ${log.entry}`;
     }).join('\n');
@@ -170,7 +161,6 @@ REQUIREMENTS:
     setTimeout(() => setStatus(''), 2000);
   };
 
-  // Handlers
   const handleSearchClick = () => setActiveSearch(searchText);
   const handleFilterClick = () => { 
     setActiveCategory(uiCategory); 
@@ -252,7 +242,6 @@ REQUIREMENTS:
           </Link>
         </div>
 
-        {/* Filters */}
         <div className="bg-white p-6 rounded-lg shadow mb-6">
           <div className="mb-6 border-b pb-6 border-gray-100">
             <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Search Text</label>
@@ -277,7 +266,7 @@ REQUIREMENTS:
                 <input type="date" value={uiDate} onChange={(e) => setUiDate(e.target.value)} className="w-full p-2 border border-gray-300 rounded text-black"/>
                 <label className="flex items-center cursor-pointer" title="Include Ticket History">
                   <input type="checkbox" checked={uiShowContext} onChange={(e) => setUiShowContext(e.target.checked)} className="w-5 h-5 accent-blue-600 cursor-pointer"/>
-                  <span className="ml-2 text-xs font-bold text-blue-700 whitespace-nowrap">Show Context</span>
+                  <span className="ml-2 text-xs font-bold text-blue-700 whitespace-nowrap">Show Open</span>
                 </label>
               </div>
             </div>
@@ -289,7 +278,6 @@ REQUIREMENTS:
           </div>
         </div>
 
-        {/* Results */}
         <div className="space-y-3">
           {organizedLogs.map((log) => (
             <div key={log.id} className={`bg-white p-4 rounded shadow border-l-4 border-gray-400 relative ${log.isChild ? 'ml-12 border-l-8 border-l-gray-300 bg-gray-50' : ''}`}>
@@ -342,39 +330,26 @@ REQUIREMENTS:
                   {log.subject && <h4 className="font-bold text-gray-900 mb-1">{log.subject}</h4>}
                   <p className="text-gray-800 whitespace-pre-wrap">{log.entry}</p>
                   
-                  {/* --- NEW: MULTI-FILE DISPLAY --- */}
-                  {/* Backward Compatible for single ImageUrl */}
-                  {log.imageUrl && !log.attachments && (
-                    <div className="mt-3">
-                      <img src={log.imageUrl} alt="Log attachment" onClick={() => setExpandedImage(log.imageUrl)} className="w-20 h-20 object-cover rounded-lg border border-gray-300 cursor-pointer hover:opacity-80 transition" />
+                  {/* --- ATTACHMENTS & LINKS --- */}
+                  {(log.attachments?.length > 0 || log.links?.length > 0) && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {log.attachments?.map((file, idx) => (
+                        file.type?.startsWith('image/') ? (
+                          <img key={idx} src={file.url} alt={file.name} onClick={() => setExpandedImage(file.url)} className="w-16 h-16 object-cover rounded border border-gray-300 cursor-pointer hover:opacity-80" />
+                        ) : (
+                          <a key={idx} href={file.url} target="_blank" rel="noopener noreferrer" className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-200 hover:bg-blue-100 flex items-center gap-1">📄 {file.name.substring(0, 10)}...</a>
+                        )
+                      ))}
+                      {log.links?.map((link, idx) => (
+                        <a key={idx} href={link.url} target="_blank" rel="noopener noreferrer" className="text-xs bg-purple-50 text-purple-700 px-2 py-1 rounded border border-purple-200 hover:bg-purple-100 flex items-center gap-1">🔗 {link.title}</a>
+                      ))}
                     </div>
                   )}
 
-                  {/* New Array Attachments */}
-                  {log.attachments && log.attachments.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {log.attachments.map((file, idx) => {
-                        const isImage = file.type?.startsWith('image/');
-                        return isImage ? (
-                          <img 
-                            key={idx} 
-                            src={file.url} 
-                            alt={file.name} 
-                            onClick={() => setExpandedImage(file.url)} 
-                            className="w-20 h-20 object-cover rounded-lg border border-gray-300 cursor-pointer hover:opacity-80 transition"
-                          />
-                        ) : (
-                          <a 
-                            key={idx} 
-                            href={file.url} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded border border-gray-300 text-xs text-blue-600 font-bold hover:bg-gray-200 transition"
-                          >
-                            📄 {file.name.substring(0, 15)}...
-                          </a>
-                        );
-                      })}
+                  {/* Fallback for old single images */}
+                  {log.imageUrl && !log.attachments && (
+                    <div className="mt-2">
+                      <img src={log.imageUrl} alt="Log attachment" onClick={() => setExpandedImage(log.imageUrl)} className="w-16 h-16 object-cover rounded border border-gray-300 cursor-pointer hover:opacity-80" />
                     </div>
                   )}
 
