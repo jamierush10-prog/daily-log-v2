@@ -4,13 +4,11 @@ import { db, storage } from '../lib/firebase';
 import { collection, addDoc, query, orderBy, limit, getDocs } from 'firebase/firestore'; 
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation'; // NEW IMPORT
+import { useSearchParams } from 'next/navigation';
 
-// We separate the form logic into a sub-component to handle SearchParams safely
 function LogForm() {
-  const searchParams = useSearchParams(); // Hook to read URL
+  const searchParams = useSearchParams();
   
-  // --- FORM STATE ---
   const [type, setType] = useState('Open');
   const [isWork, setIsWork] = useState(false);
   const [isHome, setIsHome] = useState(false);
@@ -20,9 +18,15 @@ function LogForm() {
   const [time, setTime] = useState('');
   const [status, setStatus] = useState('');
   const [taskNumber, setTaskNumber] = useState('');
+  
+  // Attachments
   const [files, setFiles] = useState([]);
+  
+  // NEW: Links State
+  const [links, setLinks] = useState([]);
+  const [linkTitle, setLinkTitle] = useState('');
+  const [linkUrl, setLinkUrl] = useState('');
 
-  // 1. Initialize Date/Time & Check for URL Params
   useEffect(() => {
     const initDateTime = () => {
       const now = new Date();
@@ -36,11 +40,10 @@ function LogForm() {
     };
     initDateTime();
 
-    // --- NEW: Check for Auto-Fill ID ---
     const paramId = searchParams.get('taskId');
     if (paramId) {
-      setType('Done'); // Auto-switch to Done so the field appears
-      setTaskNumber(paramId); // Pre-fill the ID
+      setType('Done');
+      setTaskNumber(paramId);
     }
   }, [searchParams]);
 
@@ -54,9 +57,20 @@ function LogForm() {
     e.target.value = null; 
   };
 
-  const removeFile = (indexToRemove) => {
-    setFiles(prevFiles => prevFiles.filter((_, index) => index !== indexToRemove));
+  const removeFile = (index) => setFiles(prev => prev.filter((_, i) => i !== index));
+
+  // --- NEW LINK HANDLERS ---
+  const addLink = () => {
+    if (!linkTitle || !linkUrl) {
+      alert("Please enter both a Title and a URL.");
+      return;
+    }
+    setLinks([...links, { title: linkTitle, url: linkUrl }]);
+    setLinkTitle('');
+    setLinkUrl('');
   };
+
+  const removeLink = (index) => setLinks(prev => prev.filter((_, i) => i !== index));
 
   const handleSubmit = async () => {
     if (!entry) return; 
@@ -103,6 +117,7 @@ function LogForm() {
         subject: subject,
         entry: entry,
         attachments: uploadedAttachments, 
+        links: links, // SAVE THE LINKS
         customId: newCustomId, 
         taskRef: (type === 'Done' && taskNumber) ? taskNumber : null,
         timestamp: `${date}T${time}`,
@@ -113,9 +128,9 @@ function LogForm() {
       setStatus('Saved!');
       setEntry(''); 
       setSubject('');
-      // Don't clear taskNumber if it came from URL, but usually safer to clear:
-      setTaskNumber(''); 
+      setTaskNumber('');
       setFiles([]); 
+      setLinks([]); // Clear links
       setTimeout(() => setStatus(''), 2000);
     } catch (e) {
       console.error("Error: ", e);
@@ -176,9 +191,10 @@ function LogForm() {
         <textarea value={entry} onChange={(e) => setEntry(e.target.value)} className="w-full p-3 border border-gray-300 rounded h-32 text-black bg-gray-50" placeholder="Log details..."></textarea>
       </div>
 
-      <div className="mb-6">
+      {/* --- FILES --- */}
+      <div className="mb-4">
         <label className="block text-sm font-bold text-gray-700 mb-1">Attachments (Max 5)</label>
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex items-center gap-2 mb-2">
           <label className="cursor-pointer bg-blue-100 text-blue-700 px-4 py-2 rounded-lg font-bold hover:bg-blue-200 transition text-sm">
             + Add Files
             <input type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.msg,.eml" onChange={handleFileChange} className="hidden" />
@@ -186,11 +202,31 @@ function LogForm() {
           <span className="text-xs text-gray-500">{files.length}/5 selected</span>
         </div>
         {files.length > 0 && (
-          <div className="space-y-2">
+          <div className="space-y-1 mb-2">
             {files.map((file, index) => (
               <div key={index} className="flex justify-between items-center bg-gray-50 p-2 rounded border border-gray-200">
-                <span className="text-sm text-gray-700 truncate mr-2">📄 {file.name}</span>
-                <button onClick={() => removeFile(index)} className="text-red-500 hover:text-red-700 font-bold px-2 py-1 rounded hover:bg-red-50 transition">X</button>
+                <span className="text-xs text-gray-700 truncate mr-2">📄 {file.name}</span>
+                <button onClick={() => removeFile(index)} className="text-red-500 hover:text-red-700 font-bold px-2">X</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* --- NEW LINKS SECTION --- */}
+      <div className="mb-6 border-t border-gray-100 pt-4">
+        <label className="block text-sm font-bold text-gray-700 mb-2">Cloud Links (Optional)</label>
+        <div className="flex gap-2 mb-2">
+          <input type="text" placeholder="Title (e.g. Budget)" value={linkTitle} onChange={(e) => setLinkTitle(e.target.value)} className="flex-1 p-2 border border-gray-300 rounded text-black text-sm"/>
+          <input type="text" placeholder="https://..." value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} className="flex-1 p-2 border border-gray-300 rounded text-black text-sm"/>
+          <button onClick={addLink} className="bg-gray-800 text-white px-3 rounded font-bold hover:bg-black text-sm">+</button>
+        </div>
+        {links.length > 0 && (
+          <div className="space-y-1">
+            {links.map((link, index) => (
+              <div key={index} className="flex justify-between items-center bg-purple-50 p-2 rounded border border-purple-100">
+                <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-xs text-purple-700 underline truncate mr-2">{link.title}</a>
+                <button onClick={() => removeLink(index)} className="text-red-500 hover:text-red-700 font-bold px-2">X</button>
               </div>
             ))}
           </div>
@@ -217,7 +253,6 @@ function LogForm() {
   );
 }
 
-// Wrap in Suspense for Next.js requirements with useSearchParams
 export default function Home() {
   return (
     <div className="min-h-screen bg-gray-100 p-4 flex flex-col items-center justify-center">
