@@ -7,7 +7,7 @@ import Link from 'next/link';
 export default function OpenTasksPage() {
   const [logs, setLogs] = useState([]);
   const [filter, setFilter] = useState('All'); // All, Work, Home
-  const [expandedIds, setExpandedIds] = useState(new Set()); // Tracks which dropdowns are open
+  const [expandedIds, setExpandedIds] = useState(new Set()); 
 
   // 1. Fetch Data
   useEffect(() => {
@@ -22,7 +22,7 @@ export default function OpenTasksPage() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Toggle Dropdown logic
+  // 2. Toggle Dropdown
   const toggleExpand = (customId) => {
     const newSet = new Set(expandedIds);
     if (newSet.has(customId)) {
@@ -33,7 +33,7 @@ export default function OpenTasksPage() {
     setExpandedIds(newSet);
   };
 
-  // 3. Process Data (Group Children to Parents)
+  // 3. Process & Sort Data
   const taskGroups = (() => {
     const openTickets = [];
     const childrenMap = {};
@@ -41,14 +41,14 @@ export default function OpenTasksPage() {
     logs.forEach(log => {
       // Find Parents (Open Tickets)
       if (log.type === 'Open' && log.customId) {
-        // Apply Category Filter here
+        // Filter Logic
         let matchesCategory = true;
         if (filter === 'Work') matchesCategory = (log.categories && log.categories.includes('Work')) || log.category === 'Work' || log.category === 'Both';
         if (filter === 'Home') matchesCategory = (log.categories && log.categories.includes('Home')) || log.category === 'Home' || log.category === 'Both';
         
         if (matchesCategory) {
           openTickets.push(log);
-          childrenMap[log.customId] = [];
+          childrenMap[log.customId] = []; // Initialize bucket
         }
       }
       // Find Children (Done tasks with refs)
@@ -58,10 +58,16 @@ export default function OpenTasksPage() {
       }
     });
 
-    return openTickets.map(ticket => ({
-      ...ticket,
-      children: childrenMap[ticket.customId] || []
-    }));
+    // --- SORTING LOGIC ---
+    return openTickets
+      // Sort Parents: Ascending ID (1, 2, 3...)
+      .sort((a, b) => (a.customId || 0) - (b.customId || 0))
+      .map(ticket => ({
+        ...ticket,
+        // Sort Children: Descending Time (Newest First)
+        children: (childrenMap[ticket.customId] || [])
+          .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+      }));
   })();
 
   const displayCats = (log) => {
@@ -123,14 +129,21 @@ export default function OpenTasksPage() {
                   </div>
                   {ticket.subject && <h3 className="font-bold text-gray-800 text-lg">{ticket.subject}</h3>}
                   <p className="text-gray-700 whitespace-pre-wrap">{ticket.entry}</p>
+                  
+                  {/* Parent Attachments */}
+                  {ticket.attachments && ticket.attachments.length > 0 && (
+                     <div className="mt-2 text-xs text-blue-600 font-bold">
+                       📎 {ticket.attachments.length} Attachment(s)
+                     </div>
+                  )}
                 </div>
 
                 {/* Dropdown Button */}
                 <button 
                   onClick={() => toggleExpand(ticket.customId)}
-                  className="ml-3 p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition"
+                  className="ml-3 p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition flex flex-col items-center min-w-[50px]"
                 >
-                  {/* Chevron Icon that rotates */}
+                  <span className="text-xs font-bold text-gray-500 mb-1">{ticket.children.length}</span>
                   <svg 
                     className={`w-6 h-6 text-gray-600 transform transition-transform ${expandedIds.has(ticket.customId) ? 'rotate-180' : ''}`} 
                     fill="none" stroke="currentColor" viewBox="0 0 24 24"
@@ -143,24 +156,34 @@ export default function OpenTasksPage() {
               {/* Children List (Accordion) */}
               {expandedIds.has(ticket.customId) && (
                 <div className="bg-gray-50 border-t border-gray-100 p-4 space-y-3 animate-fade-in">
-                  <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide">Progress History ({ticket.children.length})</h4>
+                  <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide">Progress History</h4>
                   
                   {ticket.children.length === 0 && <p className="text-sm text-gray-400 italic">No progress logged yet.</p>}
 
                   {ticket.children.map(child => (
                     <div key={child.id} className="bg-white p-3 rounded border border-gray-200 shadow-sm relative">
-                      {/* Visual Connector Line */}
                       <div className="absolute -left-4 top-4 w-4 h-px bg-gray-300"></div>
                       
                       <div className="flex justify-between items-center mb-1">
                         <span className="text-xs font-bold px-2 py-0.5 rounded bg-green-100 text-green-800">Done</span>
-                        <span className="text-xs text-gray-400">{child.dateString}</span>
+                        <span className="text-xs text-gray-400">{child.dateString} {child.timestamp.split('T')[1]}</span>
                       </div>
                       <p className="text-sm text-gray-700">{child.entry}</p>
-                      {/* Show Attachments if any */}
+                      
+                      {/* Child Attachments */}
                       {child.attachments && child.attachments.length > 0 && (
-                         <div className="mt-2 text-xs text-blue-600 font-bold">
-                           📄 {child.attachments.length} Attachment(s)
+                         <div className="mt-2 flex flex-wrap gap-2">
+                           {child.attachments.map((file, idx) => (
+                             <a 
+                               key={idx} 
+                               href={file.url} 
+                               target="_blank" 
+                               rel="noopener noreferrer"
+                               className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                             >
+                               📄 {file.name.substring(0, 10)}...
+                             </a>
+                           ))}
                          </div>
                       )}
                     </div>
