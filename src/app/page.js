@@ -22,7 +22,7 @@ function LogForm() {
   // Attachments
   const [files, setFiles] = useState([]);
   
-  // NEW: Links State
+  // --- NEW: LINKS STATE ---
   const [links, setLinks] = useState([]);
   const [linkTitle, setLinkTitle] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
@@ -59,7 +59,7 @@ function LogForm() {
 
   const removeFile = (index) => setFiles(prev => prev.filter((_, i) => i !== index));
 
-  // --- NEW LINK HANDLERS ---
+  // --- LINK HANDLERS ---
   const addLink = () => {
     if (!linkTitle || !linkUrl) {
       alert("Please enter both a Title and a URL.");
@@ -117,7 +117,7 @@ function LogForm() {
         subject: subject,
         entry: entry,
         attachments: uploadedAttachments, 
-        links: links, // SAVE THE LINKS
+        links: links, // SAVE LINKS TO DB
         customId: newCustomId, 
         taskRef: (type === 'Done' && taskNumber) ? taskNumber : null,
         timestamp: `${date}T${time}`,
@@ -130,7 +130,7 @@ function LogForm() {
       setSubject('');
       setTaskNumber('');
       setFiles([]); 
-      setLinks([]); // Clear links
+      setLinks([]); 
       setTimeout(() => setStatus(''), 2000);
     } catch (e) {
       console.error("Error: ", e);
@@ -213,7 +213,7 @@ function LogForm() {
         )}
       </div>
 
-      {/* --- NEW LINKS SECTION --- */}
+      {/* --- NEW: LINKS INPUT SECTION --- */}
       <div className="mb-6 border-t border-gray-100 pt-4">
         <label className="block text-sm font-bold text-gray-700 mb-2">Cloud Links (Optional)</label>
         <div className="flex gap-2 mb-2">
