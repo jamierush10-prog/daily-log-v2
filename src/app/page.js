@@ -6,7 +6,6 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import Link from 'next/link';
 
 export default function Home() {
-  // --- FORM STATE ---
   const [type, setType] = useState('Open');
   const [isWork, setIsWork] = useState(false);
   const [isHome, setIsHome] = useState(false);
@@ -15,12 +14,8 @@ export default function Home() {
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [status, setStatus] = useState('');
-  
-  // Task Reference
   const [taskNumber, setTaskNumber] = useState('');
-  
-  // --- MULTI-FILE STATE ---
-  const [files, setFiles] = useState([]); // Stores the actual File objects
+  const [files, setFiles] = useState([]);
 
   useEffect(() => {
     const initDateTime = () => {
@@ -36,26 +31,16 @@ export default function Home() {
     initDateTime();
   }, []);
 
-  // --- FILE HANDLERS ---
-  
-  // 1. ADD Files (Don't replace)
   const handleFileChange = (e) => {
     const selected = Array.from(e.target.files);
-    
-    // Check limit
     if (files.length + selected.length > 5) {
       alert("Maximum 5 files allowed total.");
       return;
     }
-
-    // Add new files to existing list
     setFiles(prevFiles => [...prevFiles, ...selected]);
-    
-    // Reset the input so you can select the same file again if needed
     e.target.value = null; 
   };
 
-  // 2. REMOVE File
   const removeFile = (indexToRemove) => {
     setFiles(prevFiles => prevFiles.filter((_, index) => index !== indexToRemove));
   };
@@ -75,27 +60,18 @@ export default function Home() {
     setStatus('Saving...');
 
     try {
-      // 1. Upload Files from the State Array
       const uploadedAttachments = [];
-      
       if (files.length > 0) {
         setStatus(`Uploading ${files.length} files...`);
-        
         await Promise.all(files.map(async (file) => {
           const uniqueName = `${Date.now()}-${file.name}`;
           const storageRef = ref(storage, `uploads/${uniqueName}`);
           await uploadBytes(storageRef, file);
           const url = await getDownloadURL(storageRef);
-          
-          uploadedAttachments.push({
-            name: file.name,
-            url: url,
-            type: file.type 
-          });
+          uploadedAttachments.push({ name: file.name, url: url, type: file.type });
         }));
       }
 
-      // 2. Auto-Increment Logic
       let newCustomId = null;
       if (type === 'Open') {
         const q = query(collection(db, "logs"), orderBy("customId", "desc"), limit(1));
@@ -108,8 +84,6 @@ export default function Home() {
         }
       }
 
-      // 3. Save Log
-      setStatus('Saving Log...');
       await addDoc(collection(db, "logs"), {
         type: type,
         categories: activeCategories,
@@ -127,7 +101,7 @@ export default function Home() {
       setEntry(''); 
       setSubject('');
       setTaskNumber('');
-      setFiles([]); // Clear the file list
+      setFiles([]); 
       setTimeout(() => setStatus(''), 2000);
     } catch (e) {
       console.error("Error: ", e);
@@ -141,7 +115,6 @@ export default function Home() {
         
         <h2 className="text-3xl font-bold mb-6 text-center text-gray-800">Log Entry</h2>
 
-        {/* Checkboxes */}
         <div className="flex justify-center gap-8 mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
           <label className="flex items-center gap-3 cursor-pointer select-none">
             <input type="checkbox" checked={isWork} onChange={(e) => setIsWork(e.target.checked)} className="w-6 h-6 accent-blue-600 rounded"/>
@@ -153,7 +126,6 @@ export default function Home() {
           </label>
         </div>
 
-        {/* Type Selector */}
         <div className="mb-4">
           <label className="block text-sm font-bold text-gray-700 mb-1">Type</label>
           <select value={type} onChange={(e) => setType(e.target.value)} className="w-full p-3 border border-gray-300 rounded text-black bg-gray-50">
@@ -164,7 +136,6 @@ export default function Home() {
           </select>
         </div>
 
-        {/* Conditional Task # */}
         {type === 'Done' && (
           <div className="mb-4 animate-fade-in">
             <label className="block text-sm font-bold text-gray-700 mb-1">Related Task # (Optional)</label>
@@ -172,7 +143,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* Date & Time */}
         <div className="flex gap-4 mb-4">
           <div className="flex-1">
             <label className="block text-sm font-bold text-gray-700 mb-1">Date</label>
@@ -184,50 +154,31 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Subject */}
         <div className="mb-2">
           <label className="block text-sm font-bold text-gray-700 mb-1">Subject</label>
           <input type="text" value={subject} onChange={(e) => setSubject(e.target.value)} className="w-full p-3 border border-gray-300 rounded text-black font-bold placeholder-gray-400" placeholder="Subject Line..."/>
         </div>
 
-        {/* Entry */}
         <div className="mb-6">
           <label className="block text-sm font-bold text-gray-700 mb-1">Entry</label>
           <textarea value={entry} onChange={(e) => setEntry(e.target.value)} className="w-full p-3 border border-gray-300 rounded h-32 text-black bg-gray-50" placeholder="Log details..."></textarea>
         </div>
 
-        {/* --- ACCUMULATIVE FILE UPLOAD --- */}
         <div className="mb-6">
           <label className="block text-sm font-bold text-gray-700 mb-1">Attachments (Max 5)</label>
-          <p className="text-xs text-gray-500 mb-2">Supported: Images, PDF, Word, Excel, Outlook</p>
-          
           <div className="flex items-center gap-2 mb-3">
             <label className="cursor-pointer bg-blue-100 text-blue-700 px-4 py-2 rounded-lg font-bold hover:bg-blue-200 transition text-sm">
               + Add Files
-              <input 
-                type="file" 
-                multiple
-                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.msg,.eml"
-                onChange={handleFileChange}
-                className="hidden" // Hides the ugly default input
-              />
+              <input type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.msg,.eml" onChange={handleFileChange} className="hidden" />
             </label>
             <span className="text-xs text-gray-500">{files.length}/5 selected</span>
           </div>
-
-          {/* --- SELECTED FILES LIST --- */}
           {files.length > 0 && (
             <div className="space-y-2">
               {files.map((file, index) => (
                 <div key={index} className="flex justify-between items-center bg-gray-50 p-2 rounded border border-gray-200">
                   <span className="text-sm text-gray-700 truncate mr-2">📄 {file.name}</span>
-                  <button 
-                    onClick={() => removeFile(index)}
-                    className="text-red-500 hover:text-red-700 font-bold px-2 py-1 rounded hover:bg-red-50 transition"
-                    title="Remove file"
-                  >
-                    X
-                  </button>
+                  <button onClick={() => removeFile(index)} className="text-red-500 hover:text-red-700 font-bold px-2 py-1 rounded hover:bg-red-50 transition">X</button>
                 </div>
               ))}
             </div>
@@ -238,10 +189,17 @@ export default function Home() {
           {status ? status : "Submit Log"}
         </button>
 
-        <div className="mt-8 pt-6 border-t border-gray-200">
+        {/* LINK BUTTONS */}
+        <div className="mt-8 pt-6 border-t border-gray-200 space-y-4">
           <Link href="/history">
             <button className="w-full bg-gray-800 text-white py-3 px-4 rounded font-bold hover:bg-black transition">
               View History & Generate Reports
+            </button>
+          </Link>
+          
+          <Link href="/open-tasks">
+            <button className="w-full bg-blue-700 text-white py-3 px-4 rounded font-bold hover:bg-blue-800 transition">
+              View Open Tasks
             </button>
           </Link>
         </div>
