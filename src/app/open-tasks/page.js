@@ -29,7 +29,6 @@ export default function OpenTasksPage() {
     setExpandedIds(newSet);
   };
 
-  // --- EDIT HANDLERS ---
   const startEditingChild = (child) => {
     setEditingChildId(child.id);
     setEditChildText(child.entry);
@@ -109,7 +108,7 @@ export default function OpenTasksPage() {
           {taskGroups.map(ticket => (
             <div key={ticket.id} className="bg-white rounded-lg shadow border-l-4 border-blue-500 overflow-hidden">
               
-              {/* HEADER */}
+              {/* PARENT HEADER */}
               <div 
                 onClick={() => toggleExpand(ticket.customId)}
                 className="p-4 cursor-pointer hover:bg-gray-50 transition flex justify-between items-start"
@@ -119,9 +118,9 @@ export default function OpenTasksPage() {
                     <span className="text-xs font-bold text-gray-400 font-mono">#{ticket.customId}</span>
                     <span className="text-xs font-bold px-2 py-1 rounded border bg-gray-50 text-gray-600 border-gray-200">{displayCats(ticket)}</span>
                     <span className="text-xs text-gray-400">{ticket.dateString}</span>
-                    {/* Icons if present */}
-                    {ticket.attachments && ticket.attachments.length > 0 && <span className="text-xs">📎</span>}
-                    {ticket.links && ticket.links.length > 0 && <span className="text-xs">🔗</span>}
+                    {/* Icons */}
+                    {ticket.attachments?.length > 0 && <span className="text-xs">📎</span>}
+                    {ticket.links?.length > 0 && <span className="text-xs">🔗</span>}
                   </div>
                   <h3 className="font-bold text-gray-800 text-lg">{ticket.subject || '(No Subject)'}</h3>
                 </div>
@@ -130,28 +129,27 @@ export default function OpenTasksPage() {
                 </div>
               </div>
 
-              {/* EXPANDED SECTION */}
+              {/* EXPANDED CONTENT */}
               {expandedIds.has(ticket.customId) && (
                 <div className="px-4 pb-4 animate-fade-in border-t border-gray-100 pt-4">
                   
-                  {/* Parent Description */}
+                  {/* Parent Desc */}
                   <div className="mb-4">
                     <label className="block text-xs font-bold text-gray-400 mb-1 uppercase">Description</label>
                     <p className="text-gray-700 whitespace-pre-wrap">{ticket.entry}</p>
                   </div>
 
-                  {/* Parent Files/Links */}
+                  {/* Parent Attachments/Links */}
                   {(ticket.attachments?.length > 0 || ticket.links?.length > 0) && (
                      <div className="mb-4">
-                       <label className="block text-xs font-bold text-gray-400 mb-1 uppercase">Files & Links</label>
                        <div className="flex flex-wrap gap-2">
                          {ticket.attachments?.map((file, idx) => (
-                           <a key={idx} href={file.url} target="_blank" rel="noopener noreferrer" className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-200 hover:bg-blue-100 flex items-center gap-1">
-                             {file.type?.startsWith('image/') ? '🖼️' : '📄'} {file.name}
+                           <a key={`p-file-${idx}`} href={file.url} target="_blank" rel="noopener noreferrer" className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-200 hover:bg-blue-100 flex items-center gap-1">
+                             {file.type?.startsWith('image/') ? '🖼️' : '📄'} {file.name.substring(0, 15)}...
                            </a>
                          ))}
                          {ticket.links?.map((link, idx) => (
-                           <a key={idx} href={link.url} target="_blank" rel="noopener noreferrer" className="text-xs bg-purple-50 text-purple-700 px-2 py-1 rounded border border-purple-200 hover:bg-purple-100 flex items-center gap-1">
+                           <a key={`p-link-${idx}`} href={link.url} target="_blank" rel="noopener noreferrer" className="text-xs bg-purple-50 text-purple-700 px-2 py-1 rounded border border-purple-200 hover:bg-purple-100 flex items-center gap-1">
                              🔗 {link.title}
                            </a>
                          ))}
@@ -166,9 +164,9 @@ export default function OpenTasksPage() {
                     </button>
                   </Link>
 
-                  {/* Progress History */}
+                  {/* PROGRESS HISTORY */}
                   <div className="bg-gray-50 border-t border-gray-200 -mx-4 -mb-4 p-4 space-y-3">
-                    <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide">Progress History</h4>
+                    <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide">Progress History ({ticket.children.length})</h4>
                     
                     {ticket.children.length === 0 && <p className="text-sm text-gray-400 italic">No updates logged yet.</p>}
 
@@ -183,7 +181,6 @@ export default function OpenTasksPage() {
                           )}
                         </div>
 
-                        {/* Child Content */}
                         {editingChildId === child.id ? (
                           <div className="mt-2">
                             <textarea value={editChildText} onChange={(e) => setEditChildText(e.target.value)} className="w-full p-2 border border-blue-300 rounded text-sm mb-2 text-black" rows="3"></textarea>
@@ -196,16 +193,16 @@ export default function OpenTasksPage() {
                           <p className="text-sm text-gray-700 whitespace-pre-wrap">{child.entry}</p>
                         )}
                         
-                        {/* --- CHILD ATTACHMENTS & LINKS (ADDED) --- */}
+                        {/* --- CHILD LINKS & ATTACHMENTS --- */}
                         {(child.attachments?.length > 0 || child.links?.length > 0) && (
                           <div className="mt-2 flex flex-wrap gap-2 pt-2 border-t border-gray-100">
                             {child.attachments?.map((file, idx) => (
-                               <a key={idx} href={file.url} target="_blank" rel="noopener noreferrer" className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-200 hover:bg-blue-100 flex items-center gap-1">
-                                 {file.type?.startsWith('image/') ? '🖼️' : '📄'} {file.name.substring(0, 15)}...
+                               <a key={`c-file-${idx}`} href={file.url} target="_blank" rel="noopener noreferrer" className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-200 hover:bg-blue-100 flex items-center gap-1">
+                                 {file.type?.startsWith('image/') ? '🖼️' : '📄'} {file.name.substring(0, 10)}...
                                </a>
                             ))}
                             {child.links?.map((link, idx) => (
-                               <a key={idx} href={link.url} target="_blank" rel="noopener noreferrer" className="text-xs bg-purple-50 text-purple-700 px-2 py-1 rounded border border-purple-200 hover:bg-purple-100 flex items-center gap-1">
+                               <a key={`c-link-${idx}`} href={link.url} target="_blank" rel="noopener noreferrer" className="text-xs bg-purple-50 text-purple-700 px-2 py-1 rounded border border-purple-200 hover:bg-purple-100 flex items-center gap-1">
                                  🔗 {link.title}
                                </a>
                             ))}

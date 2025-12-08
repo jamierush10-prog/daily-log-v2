@@ -30,7 +30,6 @@ export default function HistoryPage() {
   const [editIsHome, setEditIsHome] = useState(false);
   const [editTaskRef, setEditTaskRef] = useState('');
 
-  const [status, setStatus] = useState('');
   const [expandedImage, setExpandedImage] = useState(null);
 
   useEffect(() => {
@@ -128,37 +127,28 @@ export default function HistoryPage() {
       alert("No logs visible to report on.");
       return;
     }
-    setStatus('Generating...');
-
     const logText = organizedLogs.map(log => {
       const time = log.timestamp.split('T')[1];
       const cats = log.categories ? log.categories.join('/') : 'General';
       let typeLabel = log.type;
       if (log.type === 'Closed' && log.closedDate === activeDate) typeLabel = 'COMPLETED TODAY';
-
       const refInfo = log.customId ? `[TICKET #${log.customId}]` : (log.taskRef ? `[REF #${log.taskRef}]` : '');
       const subject = log.subject ? ` - SUBJECT: ${log.subject}` : '';
       const indent = log.isChild ? "   >>> " : "";
-      
       const attachInfo = (log.attachments?.length > 0) ? ` [${log.attachments.length} FILES]` : '';
-      
       return `${indent}[${log.dateString} ${time}] [${cats}] [${typeLabel}] ${refInfo}${subject}${attachInfo}: ${log.entry}`;
     }).join('\n');
 
-    const prompt = `Act as my Executive Officer. Review these logs (${activeDate || 'All Time'}).
-
+    const prompt = `Act as my Executive Officer. Review these logs.
 LOG DATA:
 ${logText}
-
 REQUIREMENTS:
-1. List [COMPLETED TODAY] items as Accomplishments.
-2. Prioritize [Open] items for the Plan of the Day.
+1. List [COMPLETED TODAY] items.
+2. Prioritize [Open] items.
 3. Summarize [Done] tasks.
 `;
-
     navigator.clipboard.writeText(prompt);
-    setStatus('Copied!');
-    setTimeout(() => setStatus(''), 2000);
+    alert("Brief copied!");
   };
 
   const handleSearchClick = () => setActiveSearch(searchText);
@@ -234,12 +224,9 @@ REQUIREMENTS:
   return (
     <div className="min-h-screen bg-gray-100 p-4 flex flex-col items-center">
       <div className="w-full max-w-2xl">
-        
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-3xl font-bold text-gray-800">Archive</h1>
-          <Link href="/" className="bg-gray-600 text-white px-4 py-2 rounded font-bold hover:bg-gray-700">
-            ← Back to Log
-          </Link>
+          <Link href="/" className="bg-gray-600 text-white px-4 py-2 rounded font-bold hover:bg-gray-700">← Back</Link>
         </div>
 
         <div className="bg-white p-6 rounded-lg shadow mb-6">
@@ -271,10 +258,9 @@ REQUIREMENTS:
               </div>
             </div>
           </div>
-          
           <div className="flex gap-2">
             <button onClick={handleFilterClick} className="flex-1 bg-gray-800 text-white py-3 rounded font-bold hover:bg-black transition">Apply Filters</button>
-            <button onClick={generateBrief} className="flex-1 bg-purple-600 text-white py-3 rounded font-bold hover:bg-purple-700 transition">{status || "Copy AI Brief"}</button>
+            <button onClick={generateBrief} className="flex-1 bg-purple-600 text-white py-3 rounded font-bold hover:bg-purple-700 transition">Copy AI Brief</button>
           </div>
         </div>
 
@@ -285,7 +271,7 @@ REQUIREMENTS:
               {log.isChild && <div className="absolute -left-6 top-6 w-6 h-8 border-b-2 border-l-2 border-gray-300 rounded-bl-lg"></div>}
 
               {editingId === log.id ? (
-                // --- EDIT MODE ---
+                // EDIT MODE
                 <div className="flex flex-col gap-3 p-2 rounded">
                    <div className="flex gap-4">
                     <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={editIsWork} onChange={(e) => setEditIsWork(e.target.checked)} className="accent-blue-600"/><span className="text-sm text-black">Work</span></label>
@@ -307,7 +293,7 @@ REQUIREMENTS:
                   </div>
                 </div>
               ) : (
-                // --- VIEW MODE ---
+                // VIEW MODE
                 <>
                   <div className="flex justify-between items-center mb-2">
                     <div className="flex gap-2 items-center">
