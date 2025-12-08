@@ -39,7 +39,7 @@ export default function OpenTasksPage() {
     const childrenMap = {};
 
     logs.forEach(log => {
-      // Find Parents (Open Tickets)
+      // A. Handle Open Tickets (Parents)
       if (log.type === 'Open' && log.customId) {
         // Filter Logic
         let matchesCategory = true;
@@ -48,13 +48,19 @@ export default function OpenTasksPage() {
         
         if (matchesCategory) {
           openTickets.push(log);
-          childrenMap[log.customId] = []; // Initialize bucket
+          // BUG FIX: Convert to string to match keys, and DO NOT wipe if exists
+          const key = log.customId.toString();
+          if (!childrenMap[key]) childrenMap[key] = [];
         }
       }
-      // Find Children (Done tasks with refs)
+      
+      // B. Handle Done Tasks (Children)
       else if (log.type === 'Done' && log.taskRef) {
-        if (!childrenMap[log.taskRef]) childrenMap[log.taskRef] = [];
-        childrenMap[log.taskRef].push(log);
+        // Normalize key to string to ensure "5" matches 5
+        const key = log.taskRef.toString();
+        
+        if (!childrenMap[key]) childrenMap[key] = [];
+        childrenMap[key].push(log);
       }
     });
 
@@ -62,12 +68,17 @@ export default function OpenTasksPage() {
     return openTickets
       // Sort Parents: Ascending ID (1, 2, 3...)
       .sort((a, b) => (a.customId || 0) - (b.customId || 0))
-      .map(ticket => ({
-        ...ticket,
-        // Sort Children: Descending Time (Newest First)
-        children: (childrenMap[ticket.customId] || [])
-          .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
-      }));
+      .map(ticket => {
+        // Get children using string key
+        const key = ticket.customId.toString();
+        const children = childrenMap[key] || [];
+        
+        return {
+          ...ticket,
+          // Sort Children: Descending Time (Newest First)
+          children: children.sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+        };
+      });
   })();
 
   const displayCats = (log) => {
@@ -198,4 +209,4 @@ export default function OpenTasksPage() {
       </div>
     </div>
   );
-} 
+}
