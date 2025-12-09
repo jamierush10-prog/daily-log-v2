@@ -6,16 +6,20 @@ import Link from 'next/link';
 
 export default function HistoryPage() {
   const [logs, setLogs] = useState([]);
+  
+  // Filters
   const [searchText, setSearchText] = useState(''); 
   const [uiCategory, setUiCategory] = useState('All'); 
   const [uiDate, setUiDate] = useState('');
   const [uiShowContext, setUiShowContext] = useState(false);
 
+  // Active Filters
   const [activeSearch, setActiveSearch] = useState(''); 
   const [activeCategory, setActiveCategory] = useState('All');
   const [activeDate, setActiveDate] = useState('');
   const [activeShowContext, setActiveShowContext] = useState(false);
 
+  // Editing State
   const [editingId, setEditingId] = useState(null);
   const [editSubject, setEditSubject] = useState('');
   const [editText, setEditText] = useState('');
@@ -26,27 +30,41 @@ export default function HistoryPage() {
   const [editIsHome, setEditIsHome] = useState(false);
   const [editTaskRef, setEditTaskRef] = useState('');
 
+  const [status, setStatus] = useState('');
   const [expandedImage, setExpandedImage] = useState(null);
 
   useEffect(() => {
     const q = query(collection(db, "logs"), orderBy("timestamp", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const logsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const logsData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
       setLogs(logsData);
     });
     return () => unsubscribe();
   }, []);
 
+  // --- 1. FILTERING LOGIC ---
   const filteredLogs = logs.filter(log => {
+    // A. Search Text
     const term = activeSearch.toLowerCase();
     const entryMatch = log.entry.toLowerCase().includes(term);
     const subjectMatch = log.subject ? log.subject.toLowerCase().includes(term) : false;
     const matchesSearch = entryMatch || subjectMatch;
     
+    // B. Category (STRICT GATEKEEPER)
     let matchesCategory = true;
-    if (activeCategory === 'Work') matchesCategory = (log.categories && log.categories.includes('Work')) || log.category === 'Work' || log.category === 'Both';
-    if (activeCategory === 'Home') matchesCategory = (log.categories && log.categories.includes('Home')) || log.category === 'Home' || log.category === 'Both';
+    if (activeCategory === 'Work') {
+      matchesCategory = (log.categories && log.categories.includes('Work')) || log.category === 'Work' || log.category === 'Both';
+    } else if (activeCategory === 'Home') {
+      matchesCategory = (log.categories && log.categories.includes('Home')) || log.category === 'Home' || log.category === 'Both';
+    }
 
+    // *** STOP HERE if category or search doesn't match ***
+    if (!matchesSearch || !matchesCategory) return false;
+
+    // C. Date & Context Logic
     const createdOnDate = activeDate ? (log.dateString === activeDate) : true;
     const closedOnDate = activeDate ? (log.closedDate === activeDate) : false;
     const openTicketIds = new Set(logs.filter(l => l.type === 'Open' && l.customId).map(l => l.customId.toString()));
@@ -54,13 +72,17 @@ export default function HistoryPage() {
     if (activeShowContext) {
       if (createdOnDate) return true;
       if (closedOnDate) return true; 
+      // Only show Open tickets that ALREADY passed the Category check above
       if (log.type === 'Open') return true; 
+      // Only show children if they are linked to an existing Open Ticket
       if (log.type === 'Done' && log.taskRef && openTicketIds.has(log.taskRef.toString())) return true; 
       return false;
     }
-    return matchesSearch && matchesCategory && (createdOnDate || closedOnDate);
+
+    return (createdOnDate || closedOnDate);
   });
 
+  // --- 2. GROUPING ---
   const organizedLogs = (() => {
     const openTickets = [];
     const closedTickets = [];
@@ -102,29 +124,65 @@ export default function HistoryPage() {
 
   const markAsClosed = async (id) => {
     const now = new Date();
-    const todayString = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const todayString = `${year}-${month}-${day}`;
+
     const logRef = doc(db, "logs", id);
     await updateDoc(logRef, { type: 'Closed', closedDate: todayString });
   };
 
   const generateBrief = () => {
-    if (organizedLogs.length === 0) { alert("No logs visible."); return; }
+    if (organizedLogs.length === 0) {
+      alert("No logs visible to report on.");
+      return;
+    }
+    setStatus('Generating...');
+
     const logText = organizedLogs.map(log => {
       const time = log.timestamp.split('T')[1];
       const cats = log.categories ? log.categories.join('/') : 'General';
-      const typeLabel = (log.type === 'Closed' && log.closedDate === activeDate) ? 'COMPLETED TODAY' : log.type;
+      let typeLabel = log.type;
+      if (log.type === 'Closed' && log.closedDate === activeDate) typeLabel = 'COMPLETED TODAY';
+
       const refInfo = log.customId ? `[TICKET #${log.customId}]` : (log.taskRef ? `[REF #${log.taskRef}]` : '');
       const subject = log.subject ? ` - SUBJECT: ${log.subject}` : '';
       const indent = log.isChild ? "   >>> " : "";
-      return `${indent}[${log.dateString} ${time}] [${cats}] [${typeLabel}] ${refInfo}${subject}: ${log.entry}`;
+      
+      const attachInfo = (log.attachments?.length > 0) ? ` [${log.attachments.length} FILES]` : '';
+      
+      return `${indent}[${log.dateString} ${time}] [${cats}] [${typeLabel}] ${refInfo}${subject}${attachInfo}: ${log.entry}`;
     }).join('\n');
-    navigator.clipboard.writeText(`Act as my Executive Officer. Review logs (${activeDate || 'All Time'}).\nLOG DATA:\n${logText}\nREQUIREMENTS:\n1. List [COMPLETED TODAY] items.\n2. Prioritize [Open] items.\n3. Summarize [Done] tasks.`);
-    alert('Brief copied!');
+
+    const prompt = `Act as my Executive Officer. Review these logs (${activeDate || 'All Time'}).
+
+LOG DATA:
+${logText}
+
+REQUIREMENTS:
+1. List [COMPLETED TODAY] items as Accomplishments.
+2. Prioritize [Open] items for the Plan of the Day.
+3. Summarize [Done] tasks.
+`;
+
+    navigator.clipboard.writeText(prompt);
+    setStatus('Copied!');
+    setTimeout(() => setStatus(''), 2000);
   };
 
   const handleSearchClick = () => setActiveSearch(searchText);
-  const handleFilterClick = () => { setActiveCategory(uiCategory); setActiveDate(uiDate); setActiveShowContext(uiShowContext); };
-  const handleDelete = async (id) => { if (confirm("Delete log?")) await deleteDoc(doc(db, "logs", id)); };
+  const handleFilterClick = () => { 
+    setActiveCategory(uiCategory); 
+    setActiveDate(uiDate); 
+    setActiveShowContext(uiShowContext); 
+  };
+
+  const handleDelete = async (id) => {
+    if (confirm("Permanently delete this log?")) {
+      await deleteDoc(doc(db, "logs", id));
+    }
+  };
 
   const startEditing = (log) => {
     setEditingId(log.id);
@@ -151,33 +209,47 @@ export default function HistoryPage() {
     const activeCategories = [];
     if (editIsWork) activeCategories.push('Work');
     if (editIsHome) activeCategories.push('Home');
+
     const logRef = doc(db, "logs", id);
     await updateDoc(logRef, {
-      subject: editSubject, entry: editText, type: editType, taskRef: editTaskRef || null,
-      categories: activeCategories, dateString: editDate, timestamp: `${editDate}T${editTime}`
+      subject: editSubject,
+      entry: editText,
+      type: editType,
+      taskRef: (editType === 'Done' && editTaskRef) ? editTaskRef : null,
+      categories: activeCategories,
+      dateString: editDate,
+      timestamp: `${editDate}T${editTime}`
     });
     setEditingId(null);
   };
 
   const getBadgeColor = (type, closedDate) => {
-    if (type === 'Closed' && activeDate && closedDate === activeDate) return 'bg-green-600 text-white border border-green-700 shadow-sm';
+    if (type === 'Closed' && activeDate && closedDate === activeDate) {
+      return 'bg-green-600 text-white border border-green-700 shadow-sm';
+    }
     switch(type) {
-      case 'Open': return 'bg-blue-100 text-blue-800 border border-blue-200';
-      case 'Done': return 'bg-green-100 text-green-800 border border-green-200'; 
-      case 'Closed': return 'bg-gray-200 text-gray-800 border border-gray-300';
-      case 'Note': return 'bg-yellow-100 text-yellow-800 border border-yellow-200';
+      case 'Open':    return 'bg-blue-100 text-blue-800 border border-blue-200';
+      case 'Done':    return 'bg-green-100 text-green-800 border border-green-200'; 
+      case 'Closed':  return 'bg-gray-200 text-gray-800 border border-gray-300';
+      case 'Note':    return 'bg-yellow-100 text-yellow-800 border border-yellow-200';
       default: return 'bg-gray-100';
     }
   };
 
-  const displayCats = (log) => (log.categories ? log.categories.join(' & ') : (log.category || 'Work'));
+  const displayCats = (log) => {
+    if (log.categories) return log.categories.join(' & ');
+    return log.category || 'Work';
+  };
 
   return (
     <div className="min-h-screen bg-gray-100 p-4 flex flex-col items-center">
       <div className="w-full max-w-2xl">
+        
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-3xl font-bold text-gray-800">Archive</h1>
-          <Link href="/" className="bg-gray-600 text-white px-4 py-2 rounded font-bold hover:bg-gray-700">← Back to Log</Link>
+          <Link href="/" className="bg-gray-600 text-white px-4 py-2 rounded font-bold hover:bg-gray-700">
+            ← Back to Log
+          </Link>
         </div>
 
         <div className="bg-white p-6 rounded-lg shadow mb-6">
@@ -188,11 +260,14 @@ export default function HistoryPage() {
               <button onClick={handleSearchClick} className="bg-blue-600 text-white px-6 py-2 rounded font-bold hover:bg-blue-700">Search</button>
             </div>
           </div>
+
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div>
               <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Category</label>
               <select value={uiCategory} onChange={(e) => setUiCategory(e.target.value)} className="w-full p-2 border border-gray-300 rounded text-black">
-                <option value="All">Show All</option><option value="Work">Work Only</option><option value="Home">Home Only</option>
+                <option value="All">Show All</option>
+                <option value="Work">Work Only</option>
+                <option value="Home">Home Only</option>
               </select>
             </div>
             <div>
@@ -206,19 +281,21 @@ export default function HistoryPage() {
               </div>
             </div>
           </div>
+          
           <div className="flex gap-2">
             <button onClick={handleFilterClick} className="flex-1 bg-gray-800 text-white py-3 rounded font-bold hover:bg-black transition">Apply Filters</button>
-            <button onClick={generateBrief} className="flex-1 bg-purple-600 text-white py-3 rounded font-bold hover:bg-purple-700 transition">Copy AI Brief</button>
+            <button onClick={generateBrief} className="flex-1 bg-purple-600 text-white py-3 rounded font-bold hover:bg-purple-700 transition">{status || "Copy AI Brief"}</button>
           </div>
         </div>
 
         <div className="space-y-3">
           {organizedLogs.map((log) => (
             <div key={log.id} className={`bg-white p-4 rounded shadow border-l-4 border-gray-400 relative ${log.isChild ? 'ml-12 border-l-8 border-l-gray-300 bg-gray-50' : ''}`}>
+              
               {log.isChild && <div className="absolute -left-6 top-6 w-6 h-8 border-b-2 border-l-2 border-gray-300 rounded-bl-lg"></div>}
 
               {editingId === log.id ? (
-                // EDIT MODE
+                // --- EDIT MODE ---
                 <div className="flex flex-col gap-3 p-2 rounded">
                    <div className="flex gap-4">
                     <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={editIsWork} onChange={(e) => setEditIsWork(e.target.checked)} className="accent-blue-600"/><span className="text-sm text-black">Work</span></label>
@@ -240,7 +317,7 @@ export default function HistoryPage() {
                   </div>
                 </div>
               ) : (
-                // VIEW MODE
+                // --- VIEW MODE ---
                 <>
                   <div className="flex justify-between items-center mb-2">
                     <div className="flex gap-2 items-center">
@@ -263,6 +340,7 @@ export default function HistoryPage() {
                   {log.subject && <h4 className="font-bold text-gray-900 mb-1">{log.subject}</h4>}
                   <p className="text-gray-800 whitespace-pre-wrap">{log.entry}</p>
                   
+                  {/* --- ATTACHMENTS & LINKS --- */}
                   {(log.attachments?.length > 0 || log.links?.length > 0) && (
                     <div className="mt-2 flex flex-wrap gap-2">
                       {log.attachments?.map((file, idx) => (
@@ -277,11 +355,13 @@ export default function HistoryPage() {
                       ))}
                     </div>
                   )}
+
                   {log.imageUrl && !log.attachments && (
                     <div className="mt-2">
                       <img src={log.imageUrl} alt="Log attachment" onClick={() => setExpandedImage(log.imageUrl)} className="w-16 h-16 object-cover rounded border border-gray-300 cursor-pointer hover:opacity-80" />
                     </div>
                   )}
+
                 </>
               )}
             </div>
