@@ -9,7 +9,7 @@ export default function OpenTasksPage() {
   const [filter, setFilter] = useState('All'); 
   const [expandedIds, setExpandedIds] = useState(new Set()); 
 
-  // Editing State
+  // --- EDITING STATE ---
   const [editingChildId, setEditingChildId] = useState(null);
   const [editChildText, setEditChildText] = useState('');
 
@@ -27,6 +27,25 @@ export default function OpenTasksPage() {
     if (newSet.has(customId)) newSet.delete(customId);
     else newSet.add(customId);
     setExpandedIds(newSet);
+  };
+
+  // --- ACTIONS ---
+  
+  // NEW: Close Ticket Function
+  const markAsClosed = async (id) => {
+    if (!confirm("Are you sure you want to close this ticket?")) return;
+
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const todayString = `${year}-${month}-${day}`;
+
+    const logRef = doc(db, "logs", id);
+    await updateDoc(logRef, { 
+      type: 'Closed',
+      closedDate: todayString 
+    });
   };
 
   const startEditingChild = (child) => {
@@ -132,13 +151,13 @@ export default function OpenTasksPage() {
               {expandedIds.has(ticket.customId) && (
                 <div className="px-4 pb-4 animate-fade-in border-t border-gray-100 pt-4">
                   
-                  {/* Parent Description */}
+                  {/* Description */}
                   <div className="mb-4">
                     <label className="block text-xs font-bold text-gray-400 mb-1 uppercase">Description</label>
                     <p className="text-gray-700 whitespace-pre-wrap">{ticket.entry}</p>
                   </div>
 
-                  {/* Parent Files/Links */}
+                  {/* Files & Links */}
                   {(ticket.attachments?.length > 0 || ticket.links?.length > 0) && (
                      <div className="mb-4">
                        <label className="block text-xs font-bold text-gray-400 mb-1 uppercase">Files & Links</label>
@@ -157,12 +176,21 @@ export default function OpenTasksPage() {
                      </div>
                   )}
 
-                  {/* Log Update Button */}
-                  <Link href={`/?taskId=${ticket.customId}`}>
-                    <button className="w-full bg-green-600 text-white py-2 rounded font-bold hover:bg-green-700 transition text-sm flex items-center justify-center gap-2 shadow-sm mb-4">
-                      <span className="text-lg leading-none font-bold">+</span> Log Update
+                  {/* ACTION BUTTONS ROW */}
+                  <div className="flex gap-2 mb-4">
+                    <Link href={`/?taskId=${ticket.customId}`} className="flex-1">
+                      <button className="w-full bg-green-600 text-white py-2 rounded font-bold hover:bg-green-700 transition text-sm flex items-center justify-center gap-2 shadow-sm">
+                        <span className="text-lg leading-none font-bold">+</span> Log Update
+                      </button>
+                    </Link>
+                    
+                    <button 
+                      onClick={() => markAsClosed(ticket.id)}
+                      className="flex-1 bg-gray-100 text-gray-700 py-2 rounded font-bold hover:bg-gray-200 border border-gray-300 transition text-sm flex items-center justify-center gap-2 shadow-sm"
+                    >
+                      <span>✓</span> Close Ticket
                     </button>
-                  </Link>
+                  </div>
 
                   {/* PROGRESS HISTORY */}
                   <div className="bg-gray-50 border-t border-gray-200 -mx-4 -mb-4 p-4 space-y-3">
@@ -173,8 +201,6 @@ export default function OpenTasksPage() {
                     {ticket.children.map(child => (
                       <div key={child.id} className="bg-white p-3 rounded border border-gray-200 shadow-sm relative">
                         <div className="absolute -left-4 top-4 w-4 h-px bg-gray-300"></div>
-                        
-                        {/* Child Header */}
                         <div className="flex justify-between items-center mb-1">
                           <span className="text-xs font-bold px-2 py-0.5 rounded bg-green-100 text-green-800">Done</span>
                           <span className="text-xs text-gray-400">{child.dateString} {child.timestamp.split('T')[1]}</span>
@@ -183,7 +209,7 @@ export default function OpenTasksPage() {
                           )}
                         </div>
 
-                        {/* Child Edit or View */}
+                        {/* Child Content */}
                         {editingChildId === child.id ? (
                           <div className="mt-2">
                             <textarea value={editChildText} onChange={(e) => setEditChildText(e.target.value)} className="w-full p-2 border border-blue-300 rounded text-sm mb-2 text-black" rows="3"></textarea>
@@ -193,22 +219,23 @@ export default function OpenTasksPage() {
                             </div>
                           </div>
                         ) : (
-                          // VIEW MODE: Show Subject and Entry
                           <div>
                             {child.subject && <h5 className="font-bold text-gray-800 text-sm mb-1">{child.subject}</h5>}
                             <p className="text-sm text-gray-700 whitespace-pre-wrap">{child.entry}</p>
                           </div>
                         )}
                         
-                        {/* Child Links/Files */}
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {child.attachments?.map((file, idx) => (
-                             <a key={idx} href={file.url} target="_blank" rel="noopener noreferrer" className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-200 hover:bg-blue-100 flex items-center gap-1">📄 {file.name.substring(0, 10)}...</a>
-                          ))}
-                          {child.links?.map((link, idx) => (
-                             <a key={idx} href={link.url} target="_blank" rel="noopener noreferrer" className="text-xs bg-purple-50 text-purple-700 px-2 py-1 rounded border border-purple-200 hover:bg-purple-100 flex items-center gap-1">🔗 {link.title}</a>
-                          ))}
-                        </div>
+                        {/* Child Attachments/Links */}
+                        {(child.attachments?.length > 0 || child.links?.length > 0) && (
+                          <div className="mt-2 flex flex-wrap gap-2 pt-2 border-t border-gray-100">
+                            {child.attachments?.map((file, idx) => (
+                               <a key={`c-file-${idx}`} href={file.url} target="_blank" rel="noopener noreferrer" className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-200 hover:bg-blue-100 flex items-center gap-1">📄 {file.name.substring(0, 10)}...</a>
+                            ))}
+                            {child.links?.map((link, idx) => (
+                               <a key={`c-link-${idx}`} href={link.url} target="_blank" rel="noopener noreferrer" className="text-xs bg-purple-50 text-purple-700 px-2 py-1 rounded border border-purple-200 hover:bg-purple-100 flex items-center gap-1">🔗 {link.title}</a>
+                            ))}
+                          </div>
+                        )}
 
                       </div>
                     ))}
